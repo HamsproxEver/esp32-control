@@ -180,6 +180,7 @@ $nombre = $_SESSION['user_nombre'];
             <div class="card">
                 <h3>⚡ Acciones</h3>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
+		    <button class="btn btn-primary" id="btn-start" onclick="sendCmd('START')" disabled>▶️ Iniciar estado</button>
                     <button class="btn btn-primary" id="btn-scan" onclick="sendCmd('SCAN')" disabled>📡 Escanear</button>
                     <button class="btn" id="btn-stop" onclick="sendCmd('STOP')" disabled>⏹ Detener</button>
                     <button class="btn" id="btn-list" onclick="sendCmd('LIST_DEVICES')" disabled>📋 Listar</button>
@@ -236,10 +237,16 @@ $nombre = $_SESSION['user_nombre'];
         </div>
 
         <!-- Terminal / Logs -->
-        <div class="card">
+	<div class="card">
             <h3>🖥️ Terminal / Logs</h3>
             <div class="terminal" id="terminal">
                 <div class="log-info">ESP32-Control v2.0 - Listo para conectar</div>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <input type="text" id="cmd-input" placeholder="Escribe un comando (SCAN, STATUS, PING, JAM:SSID...)"
+                       style="flex:1; background:#313244; color:#cdd6f4; border:1px solid #45475a; border-radius:8px;
+                              padding:10px 14px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none;">
+                <button class="btn btn-primary" id="btn-cmd-send" onclick="sendTypedCmd()" disabled>Enviar</button>
             </div>
         </div>
 
@@ -314,8 +321,11 @@ $nombre = $_SESSION['user_nombre'];
                 updateState('idle', 'Conectado');
                 log('Conectado al ESP32', 'ok');
 
-                enableControls(true);
+		enableControls(true);
                 readLoop();
+
+                // Inicializar el ESP32 al conectar (comando START del firmware)
+                setTimeout(() => { sendCmd('START'); }, 500);
 
             } catch (err) {
                 log('Error de conexión: ' + err.message, 'error');
@@ -345,6 +355,18 @@ $nombre = $_SESSION['user_nombre'];
             await writer.write(encoder.encode(cmd + '\r\n'));
             log('→ ' + cmd, 'cmd');
         }
+	function sendTypedCmd() {
+            const input = document.getElementById('cmd-input');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+            sendCmd(cmd);
+            input.value = '';
+            log('Enviado manualmente: ' + cmd, 'cmd');
+        }
+
+        document.getElementById('cmd-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendTypedCmd();
+        });
 
         function jam() {
             const ssid = document.getElementById('ssid-jam').value;
@@ -508,12 +530,15 @@ $nombre = $_SESSION['user_nombre'];
             return div.innerHTML;
         }
 
-        function enableControls(en) {
+	function enableControls(en) {
             for (let id of ['btn-scan','btn-stop','btn-list','btn-ping','btn-status',
-                            'btn-jam','btn-unjam','btn-evil','btn-unevil','btn-emergency']) {
+                            'btn-jam','btn-unjam','btn-evil','btn-unevil','btn-emergency',
+                            'btn-cmd-send','btn-start']) {
                 document.getElementById(id).disabled = !en;
             }
         }
+
+
 
         // Refrescar puertos (placeholder - WebSerial no enumera sin permiso)
         function refreshPorts() {
