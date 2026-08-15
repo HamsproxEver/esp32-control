@@ -96,6 +96,7 @@ $nombre = $_SESSION['user_nombre'];
             border-radius: 8px; padding: 8px 12px; font-family: 'Inter', sans-serif;
             min-width: 220px; font-size: 13px;
         }
+        .hint { color: #6c7086; font-size: 11px; margin-top: 4px; }
 
         /* Tabla */
         .table-wrap { overflow-x: auto; }
@@ -107,6 +108,7 @@ $nombre = $_SESSION['user_nombre'];
         .badge-yes { background: #a6e3a1; color: #1e1e2e; }
         .badge-no { background: #45475a; color: #6c7086; }
         .badge-target { background: #f9e2af; color: #1e1e2e; }
+        .badge-origen { background: #89b4fa; color: #1e1e2e; }
 
         /* Terminal */
         .terminal {
@@ -151,6 +153,7 @@ $nombre = $_SESSION['user_nombre'];
             <?php if ($rol == 'administrador'): ?>
                 <a href="panel_admin.php" class="admin-link">⚙️ Admin</a>
             <?php endif; ?>
+            <a href="dashboard_dispositivos.php" class="header-link">📊 Dispositivos</a>
             <a href="seguridad.php" class="header-link">🔐 Seguridad</a>
             <a href="logout.php" class="btn-logout">Cerrar Sesión</a>
         </div>
@@ -184,12 +187,13 @@ $nombre = $_SESSION['user_nombre'];
                 <h3>⚡ Acciones</h3>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button class="btn btn-primary" id="btn-start" onclick="sendCmd('START')" disabled>▶️ Iniciar estado</button>
-                    <button class="btn btn-primary" id="btn-scan" onclick="sendCmd('SCAN')" disabled>📡 Escanear</button>
+                    <button class="btn btn-primary" id="btn-scan" onclick="scanRedes()" disabled>📡 Escanear redes</button>
                     <button class="btn" id="btn-stop" onclick="sendCmd('STOP')" disabled>⏹ Detener</button>
                     <button class="btn" id="btn-list" onclick="sendCmd('LIST_DEVICES')" disabled>📋 Listar</button>
 		    <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
                     <button class="btn" id="btn-status" onclick="sendCmd('STATUS')" disabled>ℹ️ Estado</button>
                 </div>
+                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida.</p>
             </div>
         </div>
 
@@ -200,9 +204,11 @@ $nombre = $_SESSION['user_nombre'];
                 <div class="ssid-row">
                     <label>Objetivo:</label>
                     <select class="ssid-select" id="ssid-jam"><option value="">— seleccionar SSID —</option></select>
+                    <button class="btn btn-primary" id="btn-scan-jam" onclick="scanClients('deauth')" disabled>🔎 Escanear dispositivos</button>
                     <button class="btn btn-warning" id="btn-jam" onclick="jam()" disabled>🚫 INHIBIR</button>
                     <button class="btn" id="btn-unjam" onclick="sendCmd('STOP_JAM')" disabled>✋ Detener</button>
                 </div>
+                <p class="hint">El escaneo de dispositivos sintoniza el canal de la red elegida y detecta sus clientes (~8 s). Los resultados se envían también al dashboard "📊 Dispositivos".</p>
             </div>
 
             <!-- Evil Twin -->
@@ -211,15 +217,17 @@ $nombre = $_SESSION['user_nombre'];
                 <div class="ssid-row">
                     <label>Clonar:</label>
                     <select class="ssid-select" id="ssid-evil"><option value="">— seleccionar SSID —</option></select>
+                    <button class="btn btn-primary" id="btn-scan-evil" onclick="scanClients('evil')" disabled>🔎 Escanear dispositivos</button>
                     <button class="btn btn-purple" id="btn-evil" onclick="evilTwin()" disabled>🕸️ Activar</button>
                     <button class="btn" id="btn-unevil" onclick="sendCmd('STOP_EVIL')" disabled>✋ Detener</button>
                 </div>
+                <p class="hint">El escaneo de dispositivos aquí es independiente del de Inhibición: al escanear desde un servicio se borran automáticamente los resultados del otro.</p>
             </div>
         </div>
 
         <!-- Tabla de dispositivos -->
         <div class="card" style="margin-bottom: 20px;">
-            <h3>📊 Dispositivos detectados</h3>
+            <h3>📊 Dispositivos detectados <span class="badge badge-origen" id="tabla-origen" style="display:none;"></span></h3>
             <div class="table-wrap">
                 <table id="devices-table">
                     <thead>
@@ -243,10 +251,10 @@ $nombre = $_SESSION['user_nombre'];
         <div class="card">
             <h3>🖥️ Terminal / Logs</h3>
             <div class="terminal" id="terminal">
-                <div class="log-info">ESP32-Control v2.0 - Listo para conectar</div>
+                <div class="log-info">ESP32-Control v2.1 - Listo para conectar</div>
             </div>
             <div style="display:flex; gap:8px; margin-top:10px;">
-                <input type="text" id="cmd-input" placeholder="Escribe un comando (SCAN, STATUS, PING, JAM:SSID...)"
+                <input type="text" id="cmd-input" placeholder="Escribe un comando (SCAN, STATUS, PING, SCAN_CLIENTS:SSID, JAM:SSID...)"
                        style="flex:1; background:#313244; color:#cdd6f4; border:1px solid #45475a; border-radius:8px;
                               padding:10px 14px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none;">
                 <button class="btn btn-primary" id="btn-cmd-send" onclick="sendTypedCmd()" disabled>Enviar</button>
@@ -274,7 +282,7 @@ $nombre = $_SESSION['user_nombre'];
 
         <!-- Emergencia -->
         <div class="emergency-section">
-            <button class="btn-emergency" id="btn-emergency" onclick="emergency()" disabled>
+            <button class="btn-emergency" id="btn-emergency" onclick="emergency()">
                 ⚠️ EMERGENCIA - DETENER TODO ⚠️
             </button>
         </div>
@@ -290,6 +298,8 @@ $nombre = $_SESSION['user_nombre'];
         let devices = {};
         let connected = false;
         let state = 'idle';
+        // Origen del escaneo actual de la tabla: 'redes' | 'deauth' | 'evil' | null
+        let scanSource = null;
 
         const KNOWN_VIDS = [0x10C4, 0x1A86, 0x0403, 0x303A];
 
@@ -408,6 +418,7 @@ $nombre = $_SESSION['user_nombre'];
                 'scanning': { text: 'ESCANEANDO...', led: 'scanning' },
                 'jamming': { text: 'INHIBIENDO', led: 'jamming' },
                 'evil_twin': { text: 'PORTAL CAUTIVO ACTIVO', led: 'scanning' },
+                'client_scan': { text: 'ESCANEANDO DISPOSITIVOS...', led: 'scanning' },
                 'emergency': { text: 'PARADA DE EMERGENCIA', led: 'jamming' }
             };
 
@@ -529,6 +540,81 @@ $nombre = $_SESSION['user_nombre'];
             setTimeout(() => { pingPending = false; }, 3000);
         }
 
+        // ============================================================
+        // ESCANEOS
+        //  - scanRedes():   escanea APs de alrededor (botón de Acciones)
+        //  - scanClients(): escanea dispositivos de la red elegida
+        //                   (botones de Inhibición y Portal Cautivo).
+        //                   Cada servicio es independiente: escanear
+        //                   desde uno borra los resultados del otro.
+        // ============================================================
+
+        const NOMBRE_ORIGEN = { redes: 'Escaneo de redes', deauth: 'Inhibición (Deauth)', evil: 'Portal Cautivo (Evil Twin)' };
+
+        function scanRedes() {
+            scanSource = 'redes';
+            sendCmd('SCAN');
+        }
+
+        function scanClients(source) {
+            const selId = (source === 'deauth') ? 'ssid-jam' : 'ssid-evil';
+            const ssid = document.getElementById(selId).value;
+            if (!ssid) {
+                log('Selecciona un SSID para escanear sus dispositivos', 'warn');
+                return;
+            }
+            // Si hay resultados de otro servicio, se borran automáticamente
+            if (scanSource && scanSource !== source) {
+                log('Borrando resultados del escaneo anterior (' + (NOMBRE_ORIGEN[scanSource] || scanSource) + ')...', 'info');
+                devices = {};
+                renderDevices();
+                // También se vacía el escaneo guardado para el segundo dashboard
+                fetch('api_escaneo.php?action=guardar', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'action=guardar&tipo=' + source + '&ssid=' + encodeURIComponent(ssid) + '&dispositivos=' + encodeURIComponent('[]')
+                }).catch(() => {});
+            }
+            scanSource = source;
+            log('Escaneando dispositivos conectados a: ' + ssid + ' (desde ' + NOMBRE_ORIGEN[source] + ')', 'info');
+            sendCmd('SCAN_CLIENTS:' + ssid);
+        }
+
+        // Guarda el escaneo actual en la BD para el segundo dashboard
+        function guardarEscaneo() {
+            if (scanSource !== 'deauth' && scanSource !== 'evil') {
+                log('Escaneo de redes: no se guarda en el dashboard de dispositivos', 'info');
+                return;
+            }
+            const selId = (scanSource === 'deauth') ? 'ssid-jam' : 'ssid-evil';
+            const ssid = document.getElementById(selId).value;
+            const list = Object.values(devices).map(d => ({
+                mac: d.mac, ssid: d.ssid, rssi: d.rssi,
+                channel: d.channel, consent: d.consent, target: d.target
+            }));
+            const body = new URLSearchParams({
+                action: 'guardar',
+                tipo: scanSource,
+                ssid: ssid,
+                dispositivos: JSON.stringify(list)
+            }).toString();
+            fetch('api_escaneo.php?action=guardar', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body
+            }).then(r => r.json()).then(d => {
+                if (d.ok) {
+                    log('Escaneo guardado (' + d.total + ' dispositivos). Disponible en el dashboard 📊 Dispositivos.', 'ok');
+                } else {
+                    log('Error al guardar el escaneo: ' + (d.error || 'desconocido'), 'error');
+                }
+            }).catch(e => {
+                log('No se pudo guardar el escaneo: ' + e.message, 'error');
+            });
+        }
+
         function jam() {
             const ssid = document.getElementById('ssid-jam').value;
             if (!ssid) { log('Selecciona un SSID para inhibir', 'warn'); return; }
@@ -541,9 +627,25 @@ $nombre = $_SESSION['user_nombre'];
             sendCmd('EVIL:' + ssid);
         }
 
+        // EMERGENCIA: siempre disponible. Si el ESP32 está conectado
+        // envía EMERGENCY (detiene jamming, portal y escaneos); si no,
+        // lo indica claramente para que el operador conecte el módulo.
         function emergency() {
-            if (!confirm('¿Enviar EMERGENCY? Detendrá jamming y portal cautivo.')) return;
+            if (!connected) {
+                logEvent('error', 'emergencia', '⚠️ EMERGENCIA no enviada: el ESP32 no está conectado.', 'Conecta el ESP32 vía USB y pulsa de nuevo. También puedes pulsar el botón físico de emergencia (GPIO4) del módulo.');
+                return;
+            }
+            if (!confirm('⚠️ ¿Enviar EMERGENCY? Se detendrá TODO (jamming, portal cautivo y escaneos).')) return;
+            logEvent('warn', 'emergencia', '⚠️ ENVIANDO PARADA DE EMERGENCIA...');
             sendCmd('EMERGENCY');
+            // Refuerzo local: limpia estados aunque no llegue confirmación
+            updateState('emergency', 'PARADA DE EMERGENCIA enviada');
+            setTimeout(() => {
+                if (state === 'emergency') {
+                    logEvent('info', 'emergencia', 'Esperando confirmación del ESP32...');
+                    sendCmd('STATUS');
+                }
+            }, 1500);
         }
 
         // Leer respuestas del ESP32
@@ -601,7 +703,11 @@ $nombre = $_SESSION['user_nombre'];
                     break;
                 case 'consent': updateConsent(msg.mac, msg.consent); break;
                 case 'emergency': updateState('emergency', 'PARADA DE EMERGENCIA'); break;
-                case 'scan_end': log('Escaneo finalizado: ' + msg.found + ' redes', 'ok'); break;
+                case 'scan_end': log('Escaneo de redes finalizado: ' + msg.found + ' redes', 'ok'); break;
+                case 'scan_clients_end':
+                    log('Escaneo de dispositivos finalizado: ' + msg.found + ' encontrados', 'ok');
+                    guardarEscaneo();
+                    break;
                 case 'log': log('[ESP32] ' + msg.msg, 'info'); break;
                 case 'ping': log('ESP32 responde OK (PONG)', 'ok'); break;
                 case 'clear': clearDevices(); break;
@@ -663,6 +769,9 @@ $nombre = $_SESSION['user_nombre'];
                     break;
                 case 'JAMMING':
                     updateState('jamming', msg || 'Inhibiendo red...');
+                    break;
+                case 'CLIENT_SCAN':
+                    updateState('client_scan', msg || 'Escaneando dispositivos...');
                     break;
                 case 'WARNING':
                     logEvent('warn', 'esp32', '⚠ Firmware: ' + msg);
@@ -737,6 +846,13 @@ $nombre = $_SESSION['user_nombre'];
         function renderDevices() {
             const tbody = document.getElementById('devices-tbody');
             const list = Object.values(devices).sort((a, b) => (a.ssid || '').localeCompare(b.ssid || ''));
+            const badge = document.getElementById('tabla-origen');
+            if (scanSource && NOMBRE_ORIGEN[scanSource]) {
+                badge.textContent = NOMBRE_ORIGEN[scanSource];
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
             if (list.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6c7086;">Sin dispositivos detectados</td></tr>';
                 return;
@@ -777,7 +893,8 @@ $nombre = $_SESSION['user_nombre'];
 
         function enableControls(en) {
             for (let id of ['btn-scan','btn-stop','btn-list','btn-ping','btn-status',
-                            'btn-jam','btn-unjam','btn-evil','btn-unevil','btn-emergency',
+                            'btn-jam','btn-unjam','btn-evil','btn-unevil',
+                            'btn-scan-jam','btn-scan-evil',
                             'btn-cmd-send','btn-start']) {
                 document.getElementById(id).disabled = !en;
             }
