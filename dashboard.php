@@ -135,6 +135,9 @@ $nombre = $_SESSION['user_nombre'];
         .admin-link { background: #f9e2af; color: #1e1e2e; padding: 6px 14px; border-radius: 8px; 
                       text-decoration: none; font-size: 12px; font-weight: 700; }
         .admin-link:hover { background: #f5c842; }
+
+        .btn-active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+        .log-err-bold { font-weight: 700; }
     </style>
 </head>
 <body>
@@ -180,7 +183,7 @@ $nombre = $_SESSION['user_nombre'];
             <div class="card">
                 <h3>⚡ Acciones</h3>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-		    <button class="btn btn-primary" id="btn-start" onclick="sendCmd('START')" disabled>▶️ Iniciar estado</button>
+                    <button class="btn btn-primary" id="btn-start" onclick="sendCmd('START')" disabled>▶️ Iniciar estado</button>
                     <button class="btn btn-primary" id="btn-scan" onclick="sendCmd('SCAN')" disabled>📡 Escanear</button>
                     <button class="btn" id="btn-stop" onclick="sendCmd('STOP')" disabled>⏹ Detener</button>
                     <button class="btn" id="btn-list" onclick="sendCmd('LIST_DEVICES')" disabled>📋 Listar</button>
@@ -237,7 +240,7 @@ $nombre = $_SESSION['user_nombre'];
         </div>
 
         <!-- Terminal / Logs -->
-	<div class="card">
+        <div class="card">
             <h3>🖥️ Terminal / Logs</h3>
             <div class="terminal" id="terminal">
                 <div class="log-info">ESP32-Control v2.0 - Listo para conectar</div>
@@ -247,6 +250,25 @@ $nombre = $_SESSION['user_nombre'];
                        style="flex:1; background:#313244; color:#cdd6f4; border:1px solid #45475a; border-radius:8px;
                               padding:10px 14px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none;">
                 <button class="btn btn-primary" id="btn-cmd-send" onclick="sendTypedCmd()" disabled>Enviar</button>
+            </div>
+        </div>
+
+        <!-- Registro completo de eventos -->
+        <div class="card">
+            <h3>📋 Registro de eventos (logs)</h3>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                <button class="btn btn-active" data-logfilter="all" onclick="setLogFilter('all')">Todos</button>
+                <button class="btn" data-logfilter="error" onclick="setLogFilter('error')">✖ Errores</button>
+                <button class="btn" data-logfilter="warn" onclick="setLogFilter('warn')">⚠ Avisos</button>
+                <button class="btn" data-logfilter="tx" onclick="setLogFilter('tx')">⇢ Comandos</button>
+                <button class="btn" data-logfilter="rx" onclick="setLogFilter('rx')">⇠ Respuestas</button>
+                <span style="flex:1"></span>
+                <button class="btn" onclick="runDiagnostics()">🔍 Diagnóstico</button>
+                <button class="btn" onclick="exportLogs()">💾 Guardar</button>
+                <button class="btn" onclick="clearLogs()">🗑 Limpiar</button>
+            </div>
+            <div class="terminal" id="log-console" style="height:260px;">
+                <div class="log-info">Registro vacío. Todos los eventos del panel aparecerán aquí.</div>
             </div>
         </div>
 
@@ -271,14 +293,106 @@ $nombre = $_SESSION['user_nombre'];
 
         const KNOWN_VIDS = [0x10C4, 0x1A86, 0x0403, 0x303A];
 
-        // Log al terminal
+        // ============================================================
+        // MOTOR DE LOGS: registra TODO (conexión, comandos, respuestas,
+        // errores JS, eventos del ESP32) en dos consolas:
+        //  - #terminal     : consola rápida (siempre visible)
+        //  - #log-console  : registro completo con filtros
+        // ============================================================
+        const LOG_CSS = { debug:'info', info:'info', ok:'ok', warn:'warn', error:'error', tx:'cmd', rx:'ok', sys:'info' };
+        let logHistory = [];
+        let logFilter = 'all';
+        let rxCount = 0;
+        let lastRxAt = 0;
+        let connWatchdog = null;
+
+        // Log rápido al terminal (compatibilidad con el código existente)
         function log(msg, type = 'info') {
+            logEvent(type, 'sistema', msg);
+        }
+
+        function logEvent(level, source, msg, details) {
+            const entry = {
+                ts: new Date().toLocaleTimeString('es-ES'),
+                level: level,
+                source: source,
+                msg: msg,
+                details: details || ''
+            };
+            logHistory.push(entry);
+            if (logHistory.length > 800) logHistory.shift();
+
+            // Terminal rápido
             const term = document.getElementById('terminal');
-            const div = document.createElement('div');
-            div.className = 'log-' + type;
-            div.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-            term.appendChild(div);
-            term.scrollTop = term.scrollHeight;
+            if (term) {
+                const div = document.createElement('div');
+                div.className = 'log-' + (LOG_CSS[level] || 'info');
+                div.textContent = '[' + entry.ts + '] ' + entry.msg + (entry.details ? ' — ' + entry.details : '');
+                term.appendChild(div);
+                while (term.children.length > 400) term.removeChild(term.firstChild);
+                term.scrollTop = term.scrollHeight;
+            }
+
+            // Consola de logs completa
+            const consoleEl = document.getElementById('log-console');
+            if (consoleEl) {
+                const div = document.createElement('div');
+                div.className = 'log-' + (LOG_CSS[level] || 'info');
+                div.dataset.level = level;
+                div.textContent = '[' + entry.ts + '] [' + level.toUpperCase() + '] [' + source + '] ' + entry.msg + (entry.details ? ' — ' + entry.details : '');
+                consoleEl.appendChild(div);
+                while (consoleEl.children.length > 500) consoleEl.removeChild(consoleEl.firstChild);
+                if (logFilter !== 'all' && logFilter !== level) div.style.display = 'none';
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+        }
+
+        function setLogFilter(f) {
+            logFilter = f;
+            document.querySelectorAll('[data-logfilter]').forEach(b => {
+                b.classList.toggle('btn-active', b.dataset.logfilter === f);
+            });
+            const consoleEl = document.getElementById('log-console');
+            if (!consoleEl) return;
+            for (const child of consoleEl.children) {
+                child.style.display = (f === 'all' || child.dataset.level === f) ? '' : 'none';
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('log-console').innerHTML = '';
+            logHistory = [];
+            logEvent('ok', 'sistema', 'Registro de logs limpiado.');
+        }
+
+        function exportLogs() {
+            const lines = logHistory.map(e =>
+                '[' + e.ts + '] [' + e.level.toUpperCase() + '] [' + e.source + '] ' + e.msg + (e.details ? ' — ' + e.details : ''));
+            const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'esp32-control-logs-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            logEvent('ok', 'sistema', 'Logs exportados: ' + lines.length + ' eventos.');
+        }
+
+        function runDiagnostics() {
+            logEvent('sys', 'diagnóstico', '══════ DIAGNÓSTICO ══════');
+            logEvent('sys', 'diagnóstico', 'Contexto seguro (HTTPS): ' + (window.isSecureContext ? 'SÍ ✔' : 'NO ✘ (WebSerial NO funcionará)'));
+            logEvent('sys', 'diagnóstico', 'WebSerial disponible: ' + (navigator.serial ? 'SÍ ✔' : 'NO ✘ (usa Chrome/Edge 89+)'));
+            logEvent('sys', 'diagnóstico', 'Navegador: ' + navigator.userAgent);
+            logEvent('sys', 'diagnóstico', 'ESP32 conectado: ' + (connected ? 'SÍ ✔' : 'NO ✘'));
+            logEvent('sys', 'diagnóstico', 'Datos recibidos del ESP32: ' + rxCount + (rxCount === 0 ? ' (cero — revisa firmware / baud rate 115200 / cable de datos)' : ''));
+            logEvent('sys', 'diagnóstico', 'Última actividad del ESP32: ' + (lastRxAt ? new Date(lastRxAt).toLocaleTimeString() : 'nunca'));
+            if (connected) {
+                logEvent('sys', 'diagnóstico', 'Enviando PING y STATUS de prueba...');
+                sendCmd('PING');
+                sendCmd('STATUS');
+            } else {
+                logEvent('warn', 'diagnóstico', 'Pulsa "Conectar" y elige el puerto del ESP32.');
+            }
+            logEvent('sys', 'diagnóstico', '══════ FIN DIAGNÓSTICO ══════');
         }
 
         // Actualizar estado visual
@@ -304,69 +418,103 @@ $nombre = $_SESSION['user_nombre'];
             log('Estado: ' + st.text + (msg ? ' | ' + msg : ''), 'info');
         }
 
-        // Conectar al ESP32 vía WebSerial
+        // Conectar al ESP32 vía WebSerial (con diagnóstico completo)
         async function connectESP32() {
             try {
+                if (!window.isSecureContext) {
+                    logEvent('error', 'conexión', 'No se puede usar WebSerial: la página NO está en un contexto seguro (HTTPS).', 'Sirve el panel con https:// o https://localhost y vuelve a intentar.');
+                    return;
+                }
+                if (!navigator.serial) {
+                    logEvent('error', 'conexión', 'Este navegador no soporta la WebSerial API.', 'Usa Chrome o Edge (versión 89+) en escritorio.');
+                    return;
+                }
+
+                logEvent('info', 'conexión', 'Mostrando selector de puertos USB...');
                 port = await navigator.serial.requestPort({
                     filters: KNOWN_VIDS.map(v => ({ usbVendorId: v }))
                 });
+                if (!port) {
+                    logEvent('warn', 'conexión', 'Selector cancelado: no se eligió ningún puerto.');
+                    return;
+                }
+
+                const info = port.getInfo ? port.getInfo() : {};
+                logEvent('info', 'conexión', 'Puerto elegido: VID 0x' + (info.usbVendorId || 0).toString(16) + ' / PID 0x' + (info.usbProductId || 0).toString(16));
+
                 await port.open({ baudRate: 115200 });
+                logEvent('ok', 'conexión', 'Puerto abierto correctamente a 115200 baudios.');
 
                 writer = port.writable.getWriter();
                 reader = port.readable.getReader();
                 connected = true;
+                rxCount = 0;
 
                 document.getElementById('btn-connect').textContent = 'Desconectar';
                 document.getElementById('btn-connect').onclick = disconnectESP32;
                 updateState('idle', 'Conectado');
-                log('Conectado al ESP32', 'ok');
+                logEvent('ok', 'conexión', 'ESP32 conectado. Esperando respuesta del firmware...');
 
-		enableControls(true);
+                enableControls(true);
                 readLoop();
+
+                // Watchdog: si el ESP32 no envía nada en 3 s, algo falla
+                clearTimeout(connWatchdog);
+                connWatchdog = setTimeout(() => {
+                    if (connected && rxCount === 0) {
+                        logEvent('error', 'conexión', 'El ESP32 NO responde (no llegaron datos en 3 segundos).', 'Causas probables: 1) firmware no flasheado, 2) baud rate distinto de 115200, 3) cable USB solo de carga (sin datos), 4) placa en modo download/ROM.');
+                    }
+                }, 3000);
 
                 // Inicializar el ESP32 al conectar (comando START del firmware)
                 setTimeout(() => { sendCmd('START'); }, 500);
 
             } catch (err) {
-                log('Error de conexión: ' + err.message, 'error');
+                const name = err && err.name ? err.name : 'Error';
+                let det = err && err.message ? err.message : String(err);
+                if (name === 'NotFoundError') det = 'Se canceló el selector de puertos.';
+                else if (name === 'InvalidStateError') det = 'El puerto ya está abierto o no es compatible.';
+                else if (name === 'NetworkError') det = 'No se pudo abrir el puerto: ¿cable de datos? ¿placa apagada?';
+                else if (name === 'SecurityError') det = 'Permiso denegado por el navegador.';
+                logEvent('error', 'conexión', 'Fallo al conectar (' + name + '): ' + (err && err.message ? err.message : String(err)), det);
+                connected = false;
+                port = null; writer = null; reader = null;
             }
         }
 
         async function disconnectESP32() {
+            clearTimeout(connWatchdog);
             connected = false;
-            if (reader) { await reader.cancel(); reader = null; }
-            if (writer) { writer.releaseLock(); writer = null; }
-            if (port) { await port.close(); port = null; }
+            try {
+                if (reader) { await reader.cancel(); reader = null; }
+                if (writer) { try { writer.releaseLock(); } catch(e){} writer = null; }
+                if (port) { await port.close(); port = null; }
+                logEvent('warn', 'conexión', 'ESP32 desconectado manualmente.');
+            } catch (e) {
+                logEvent('error', 'conexión', 'Error al cerrar el puerto: ' + e.message);
+                port = null; writer = null; reader = null;
+            }
 
             document.getElementById('btn-connect').textContent = 'Conectar ESP32';
             document.getElementById('btn-connect').onclick = connectESP32;
             updateState('idle', 'Desconectado');
-            log('Desconectado del ESP32', 'warn');
             enableControls(false);
         }
 
         // Enviar comando al ESP32
         async function sendCmd(cmd) {
             if (!connected || !writer) {
-                log('Sin conexión', 'error');
+                logEvent('error', 'panel', 'No se envió "' + cmd + '": el ESP32 no está conectado.');
                 return;
             }
-            const encoder = new TextEncoder();
-            await writer.write(encoder.encode(cmd + '\r\n'));
-            log('→ ' + cmd, 'cmd');
+            try {
+                const encoder = new TextEncoder();
+                await writer.write(encoder.encode(cmd + '\r\n'));
+                logEvent('tx', 'panel', 'Comando enviado: ' + cmd);
+            } catch (e) {
+                logEvent('error', 'panel', 'Fallo al escribir "' + cmd + '": ' + e.message, 'El ESP32 puede haberse desconectado del USB.');
+            }
         }
-	function sendTypedCmd() {
-            const input = document.getElementById('cmd-input');
-            const cmd = input.value.trim();
-            if (!cmd) return;
-            sendCmd(cmd);
-            input.value = '';
-            log('Enviado manualmente: ' + cmd, 'cmd');
-        }
-
-        document.getElementById('cmd-input').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') sendTypedCmd();
-        });
 
         function jam() {
             const ssid = document.getElementById('ssid-jam').value;
@@ -389,10 +537,16 @@ $nombre = $_SESSION['user_nombre'];
         async function readLoop() {
             const decoder = new TextDecoder();
             let buffer = '';
-            while (connected && port.readable) {
+            while (connected && port && port.readable) {
                 try {
                     const { value, done } = await reader.read();
                     if (done) break;
+                    rxCount++;
+                    lastRxAt = Date.now();
+                    if (rxCount === 1) {
+                        clearTimeout(connWatchdog);
+                        logEvent('ok', 'conexión', 'Primeros datos recibidos del ESP32. ¡El firmware está vivo!');
+                    }
                     buffer += decoder.decode(value, { stream: true });
                     let lines = buffer.split('\n');
                     buffer = lines.pop();
@@ -400,18 +554,20 @@ $nombre = $_SESSION['user_nombre'];
                         handleLine(line.trim());
                     }
                 } catch (e) {
-                    log('Error de lectura: ' + e.message, 'error');
+                    logEvent('error', 'conexión', 'Error leyendo del puerto: ' + e.message, 'El ESP32 se desconectó o el cable falla.');
                     break;
                 }
             }
+            logEvent('warn', 'conexión', 'Bucle de lectura detenido.');
         }
 
         // Parsear líneas del ESP32 (igual que esp32_comm.py)
         function handleLine(line) {
             if (!line) return;
+            logEvent('rx', 'esp32', line.length > 140 ? line.substring(0, 140) + '…' : line);
             if (line.startsWith('{')) {
-                try { dispatch(JSON.parse(line)); } 
-                catch (e) { log('[JSON inválido] ' + line, 'error'); }
+                try { dispatch(JSON.parse(line)); }
+                catch (e) { logEvent('error', 'esp32', 'JSON inválido recibido: ' + line, '¿Baud rate incorrecto? El firmware debe usar 115200.'); }
             } else {
                 handleLegacy(line);
             }
@@ -436,6 +592,9 @@ $nombre = $_SESSION['user_nombre'];
                 case 'log': log('[ESP32] ' + msg.msg, 'info'); break;
                 case 'ping': log('ESP32 responde OK (PONG)', 'ok'); break;
                 case 'clear': clearDevices(); break;
+                default:
+                    logEvent('warn', 'esp32', 'Tipo de mensaje desconocido: ' + (msg.t || '(vacío)'));
+                    break;
             }
         }
 
@@ -530,7 +689,7 @@ $nombre = $_SESSION['user_nombre'];
             return div.innerHTML;
         }
 
-	function enableControls(en) {
+        function enableControls(en) {
             for (let id of ['btn-scan','btn-stop','btn-list','btn-ping','btn-status',
                             'btn-jam','btn-unjam','btn-evil','btn-unevil','btn-emergency',
                             'btn-cmd-send','btn-start']) {
@@ -538,16 +697,63 @@ $nombre = $_SESSION['user_nombre'];
             }
         }
 
+        // Terminal de comandos manuales
+        function sendTypedCmd() {
+            const input = document.getElementById('cmd-input');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+            sendCmd(cmd);
+            input.value = '';
+            log('Enviado manualmente: ' + cmd, 'cmd');
+        }
 
+        document.getElementById('cmd-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendTypedCmd();
+        });
 
         // Refrescar puertos (placeholder - WebSerial no enumera sin permiso)
         function refreshPorts() {
             log('Haz clic en "Conectar ESP32" y selecciona el puerto en el diálogo del navegador', 'info');
         }
 
-        // Inicializar
+        // ============================================================
+        // INICIALIZACIÓN: detección global de errores y desconexiones
+        // ============================================================
         enableControls(false);
-        log('Panel listo. Conecta el ESP32 vía USB.', 'info');
+
+        // Errores de JavaScript (los que rompen el panel silenciosamente)
+        window.addEventListener('error', (e) => {
+            logEvent('error', 'navegador', 'Error de JavaScript: ' + (e.message || 'desconocido'), (e.filename || '') + ' · línea ' + (e.lineno || '?'));
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            logEvent('error', 'navegador', 'Promesa rechazada sin controlar: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason || 'desconocido')));
+        });
+
+        // Detectar desconexión física del ESP32 (cable USB retirado)
+        if (navigator.serial) {
+            navigator.serial.addEventListener('disconnect', (e) => {
+                if (e.target === port) {
+                    clearTimeout(connWatchdog);
+                    connected = false;
+                    logEvent('error', 'conexión', '¡El ESP32 se desconectó del USB!', 'Revisa el cable, el puerto o un reinicio de la placa.');
+                    if (reader) { reader.cancel().catch(()=>{}); reader = null; }
+                    if (writer) { try { writer.releaseLock(); } catch(err){} writer = null; }
+                    if (port) { port.close().catch(()=>{}); port = null; }
+                    document.getElementById('btn-connect').textContent = 'Conectar ESP32';
+                    document.getElementById('btn-connect').onclick = connectESP32;
+                    enableControls(false);
+                    updateState('idle', 'ESP32 desconectado');
+                }
+            });
+        }
+
+        logEvent('info', 'sistema', 'Panel cargado. Listo para conectar el ESP32 vía USB.');
+        if (!window.isSecureContext) {
+            logEvent('error', 'sistema', '¡La página NO está en HTTPS! WebSerial no funcionará.', 'Usa https:// o https://localhost.');
+        }
+        if (!navigator.serial) {
+            logEvent('error', 'sistema', 'Este navegador no tiene WebSerial (usa Chrome/Edge 89+).');
+        }
     </script>
 </body>
 </html>
