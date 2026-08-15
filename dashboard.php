@@ -187,7 +187,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn btn-primary" id="btn-scan" onclick="sendCmd('SCAN')" disabled>📡 Escanear</button>
                     <button class="btn" id="btn-stop" onclick="sendCmd('STOP')" disabled>⏹ Detener</button>
                     <button class="btn" id="btn-list" onclick="sendCmd('LIST_DEVICES')" disabled>📋 Listar</button>
-                    <button class="btn" id="btn-ping" onclick="sendCmd('PING')" disabled>🏓 PING</button>
+		    <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
                     <button class="btn" id="btn-status" onclick="sendCmd('STATUS')" disabled>ℹ️ Estado</button>
                 </div>
             </div>
@@ -402,8 +402,9 @@ $nombre = $_SESSION['user_nombre'];
             const label = document.getElementById('status-label');
             const text = document.getElementById('state-text');
 
-            const states = {
+	    const states = {
                 'idle': { text: 'inactivo', led: 'connected' },
+                'active': { text: 'ACTIVO', led: 'connected' },
                 'scanning': { text: 'ESCANEANDO...', led: 'scanning' },
                 'jamming': { text: 'INHIBIENDO', led: 'jamming' },
                 'evil_twin': { text: 'PORTAL CAUTIVO ACTIVO', led: 'scanning' },
@@ -516,6 +517,18 @@ $nombre = $_SESSION['user_nombre'];
             }
         }
 
+	let pingPending = false;
+        function pingESP32() {
+            if (!connected) {
+                logEvent('error', 'panel', 'No se puede hacer PING: el ESP32 no está conectado.');
+                return;
+            }
+            pingPending = true;
+            logEvent('info', 'panel', 'Enviando PING (prueba de vida vía STATUS)...');
+            sendCmd('STATUS');
+            setTimeout(() => { pingPending = false; }, 3000);
+        }
+
         function jam() {
             const ssid = document.getElementById('ssid-jam').value;
             if (!ssid) { log('Selecciona un SSID para inhibir', 'warn'); return; }
@@ -598,16 +611,89 @@ $nombre = $_SESSION['user_nombre'];
             }
         }
 
-        function handleLegacy(line) {
+	function handleLegacy(line) {
+            if (line.startsWith('DEVICE:')) {
+                handleDeviceLine(line);
+                return;
+            }
             if (line.startsWith('STATUS:')) {
-                const st = line.substring(7).toLowerCase();
-                if (st.startsWith('scanning')) updateState('scanning', '');
-                else if (st.startsWith('jamming')) updateState('jamming', '');
-                else updateState('idle', '');
-            } else if (line.startsWith('PONG')) {
-                log('ESP32 responde OK (PONG)', 'ok');
+                handleStatusLine(line.substring(7));
+                return;
+            }
+            if (line.startsWith('PONG')) {
+                logEvent('ok', 'esp32', 'ESP32 responde OK (PONG)');
+                return;
+            }
+            if (line.indexOf('Comando desconocido') >= 0) {
+                logEvent('error', 'esp32', line, 'El firmware no reconoce ese comando.');
+                return;
+            }
+            // Resto de líneas de texto del firmware (banner, portal, etc.)
+            // ya quedaron registradas como RX en handleLine().
+        }
+
+        // STATUS:ESTADO:mensaje  (READY / ACTIVE / SCANNING / SCAN_COMPLETE / WARNING / ERROR / JAMMING ...)
+        function handleStatusLine(status) {
+            let st = status;
+            let msg = '';
+            const sep = status.indexOf(':');
+            if (sep >= 0) {
+                st = status.substring(0, sep).trim();
+                msg = status.substring(sep + 1).trim();
+            }
+            st = st.toUpperCase();
+
+            if (pingPending) {
+                pingPending = false;
+                logEvent('ok', 'esp32', '✔ ESP32 responde OK (PONG): ' + status);
+            }
+
+            switch (st) {
+                case 'READY':
+                    updateState('idle', msg || 'Sistema listo');
+                    break;
+                case 'ACTIVE':
+                    updateState('active', msg || 'Sistema activo');
+                    break;
+                case 'SCANNING':
+                    updateState('scanning', msg || 'Escaneando redes...');
+                    break;
+                case 'SCAN_COMPLETE':
+                    updateState('active', msg || 'Escaneo completado');
+                    break;
+                case 'JAMMING':
+                    updateState('jamming', msg || 'Inhibiendo red...');
+                    break;
+                case 'WARNING':
+                    logEvent('warn', 'esp32', '⚠ Firmware: ' + msg);
+                    break;
+                case 'ERROR':
+                    logEvent('error', 'esp32', '❌ Firmware: ' + msg);
+                    break;
+                default:
+                    logEvent('warn', 'esp32', 'Estado del firmware no reconocido: ' + status);
             }
         }
+
+        // DEVICE:MAC(6 pares):SSID:RSSI:CANAL:CONSENT
+        function handleDeviceLine(line) {
+            const parts = line.split(':');
+            if (parts.length < 10) {
+                logEvent('warn', 'esp32', 'Línea DEVICE malformada: ' + line);
+                return;
+            }
+            const mac = (parts[1] + ':' + parts[2] + ':' + parts[3] + ':' + parts[4] + ':' + parts[5] + ':' + parts[6]).toUpperCase();
+            const rssi = parseInt(parts[parts.length - 3], 10) || 0;
+            const channel = parseInt(parts[parts.length - 2], 10) || 0;
+            const consentStr = (parts[parts.length - 1] || '').toUpperCase();
+            const consent = (consentStr === 'CONSENT' || consentStr === 'YES' || consentStr === 'SI');
+            const ssid = parts.slice(7, parts.length - 3).join(':').trim();
+            addOrUpdateDevice({
+                mac: mac, ssid: ssid, rssi: rssi,
+                channel: channel, target: false, consent: consent
+            });
+        }
+
 
         // Tabla de dispositivos
         function addOrUpdateDevice(dev) {
