@@ -180,7 +180,7 @@ $nombre = $_SESSION['user_nombre'];
                         <option value="">Auto (detectar)</option>
                     </select>
                 </div>
-                <p class="hint">Al conectar, el ESP32 se inicializa solo y queda ACTIVO y listo a las órdenes (ya no hace falta "Iniciar estado"). La conexión se restablece automáticamente al volver a esta página.</p>
+                <p class="hint">Al conectar, el ESP32 se inicializa solo y queda ACTIVO y listo a las órdenes. La conexión se restablece automáticamente al volver a esta página.</p>
             </div>
 
             <!-- Acciones principales -->
@@ -193,7 +193,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
                     <button class="btn" id="btn-status" onclick="sendCmd('STATUS')" disabled>ℹ️ Estado</button>
                 </div>
-                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida. Para comprobar que el ESP32 está vivo usa "🏓 PING".</p>
+                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida. Para comprobar que el ESP32 está vivo usamos "🏓 PING".</p>
             </div>
         </div>
 
@@ -221,7 +221,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn btn-purple" id="btn-evil" onclick="evilTwin()" disabled>🕸️ Activar</button>
                     <button class="btn" id="btn-unevil" onclick="sendCmd('STOP_EVIL')" disabled>✋ Detener</button>
                 </div>
-                <p class="hint">El escaneo de dispositivos aquí es independiente del de Inhibición: al escanear desde un servicio se borran automáticamente los resultados del otro. La MAC de cada cliente se captura cuando entra en el portal cautivo.</p>
+                <p class="hint">La MAC de cada cliente se captura cuando entra en el portal cautivo.</p>
             </div>
         </div>
 
