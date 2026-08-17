@@ -109,6 +109,37 @@ $nombre = $_SESSION['user_nombre'];
         .badge-no { background: #45475a; color: #6c7086; }
         .badge-target { background: #f9e2af; color: #1e1e2e; }
         .badge-origen { background: #89b4fa; color: #1e1e2e; }
+        .badge-evil { background: #cba6f7; color: #1e1e2e; }
+
+        /* Overlay: dispositivos escaneados (se abre sin navegar, no corta procesos) */
+        .ov-backdrop {
+            position: fixed; inset: 0; background: rgba(17, 17, 27, 0.78);
+            display: none; align-items: center; justify-content: center;
+            z-index: 1000; padding: 20px;
+        }
+        .ov-backdrop.open { display: flex; }
+        .ov-panel {
+            background: #1e1e2e; border: 1px solid #313244; border-radius: 14px;
+            width: 100%; max-width: 860px; max-height: 85vh; overflow-y: auto;
+            padding: 22px; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+        }
+        .ov-panel h3 { margin: 0 0 4px 0; color: #cdd6f4; }
+        .ov-close {
+            float: right; background: none; border: none; color: #a6adc8;
+            font-size: 22px; cursor: pointer; line-height: 1;
+        }
+        .ov-close:hover { color: #f38ba8; }
+        .ov-meta { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 14px 0; font-size: 12px; color: #a6adc8; }
+        .ov-meta b { color: #cdd6f4; }
+        .ov-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .ov-tabla th { background: #313244; padding: 9px 10px; text-align: left; color: #89b4fa; }
+        .ov-tabla td { padding: 9px 10px; border-bottom: 1px solid #313244; }
+        .ov-empty { text-align: center; color: #6c7086; padding: 18px 0; }
+        .dev-count-badge {
+            display: none; min-width: 18px; padding: 1px 6px; border-radius: 10px;
+            background: #f38ba8; color: #1e1e2e; font-size: 11px; font-weight: 700;
+            text-align: center; margin-left: 4px; vertical-align: middle;
+        }
 
         /* Terminal */
         .terminal {
@@ -153,7 +184,7 @@ $nombre = $_SESSION['user_nombre'];
             <?php if ($rol == 'administrador'): ?>
                 <a href="panel_admin.php" class="admin-link">⚙️ Admin</a>
             <?php endif; ?>
-            <a href="dashboard_dispositivos.php" class="header-link">📊 Dispositivos</a>
+            <a href="#" class="header-link" onclick="abrirOverlayDispositivos(); return false;">📊 Dispositivos <span class="dev-count-badge" id="dev-count-badge">0</span></a>
             <a href="seguridad.php" class="header-link">🔐 Seguridad</a>
             <a href="logout.php" class="btn-logout">Cerrar Sesión</a>
         </div>
@@ -180,7 +211,7 @@ $nombre = $_SESSION['user_nombre'];
                         <option value="">Auto (detectar)</option>
                     </select>
                 </div>
-                <p class="hint">Al conectar, el ESP32 se inicializa solo y queda ACTIVO y listo a las órdenes. La conexión se restablece automáticamente al volver a esta página.</p>
+                <p class="hint">Al conectar, el ESP32 se inicializa solo y queda ACTIVO y listo a las órdenes (ya no hace falta "Iniciar estado"). La conexión se restablece automáticamente al volver a esta página.</p>
             </div>
 
             <!-- Acciones principales -->
@@ -193,7 +224,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
                     <button class="btn" id="btn-status" onclick="sendCmd('STATUS')" disabled>ℹ️ Estado</button>
                 </div>
-                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida. Para comprobar que el ESP32 está vivo usamos "🏓 PING".</p>
+                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida. Para comprobar que el ESP32 está vivo usa "🏓 PING".</p>
             </div>
         </div>
 
@@ -221,7 +252,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn btn-purple" id="btn-evil" onclick="evilTwin()" disabled>🕸️ Activar</button>
                     <button class="btn" id="btn-unevil" onclick="sendCmd('STOP_EVIL')" disabled>✋ Detener</button>
                 </div>
-                <p class="hint">La MAC de cada cliente se captura cuando entra en el portal cautivo.</p>
+                <p class="hint">El escaneo de dispositivos aquí es independiente del de Inhibición: al escanear desde un servicio se borran automáticamente los resultados del otro. La MAC de cada cliente se captura cuando entra en el portal cautivo.</p>
             </div>
         </div>
 
@@ -286,6 +317,36 @@ $nombre = $_SESSION['user_nombre'];
             <button class="btn-emergency" id="btn-emergency" onclick="emergency()">
                 ⚠️ EMERGENCIA - DETENER TODO ⚠️
             </button>
+        </div>
+    </div>
+
+    <!-- Overlay: dispositivos escaneados guardados en la BD -->
+    <div class="ov-backdrop" id="ov-backdrop">
+        <div class="ov-panel">
+            <button class="ov-close" onclick="cerrarOverlayDispositivos()" title="Cerrar">✕</button>
+            <h3>📊 Dispositivos escaneados</h3>
+            <div class="ov-meta">
+                <span>Proceso: <b id="ov-tipo" style="display:none;"></b></span>
+                <span>Red objetivo: <b id="ov-ssid">—</b></span>
+                <span>Dispositivos: <b id="ov-total">0</b></span>
+                <span>Fecha: <b id="ov-fecha">—</b></span>
+            </div>
+            <div class="table-wrap">
+                <table class="ov-tabla">
+                    <thead>
+                        <tr>
+                            <th>MAC</th>
+                            <th>SSID</th>
+                            <th>RSSI</th>
+                            <th>Canal</th>
+                            <th>Consentimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ov-tbody">
+                        <tr><td colspan="5" class="ov-empty">Cargando…</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -662,6 +723,7 @@ $nombre = $_SESSION['user_nombre'];
             }).then(r => r.json()).then(d => {
                 if (d.ok) {
                     log('Escaneo guardado (' + d.total + ' dispositivos con MAC capturada). Disponible en el dashboard 📊 Dispositivos.', 'ok');
+                    actualizarBadgeDispositivos();
                 } else {
                     log('Error al guardar el escaneo: ' + (d.error || 'desconocido'), 'error');
                 }
@@ -670,15 +732,49 @@ $nombre = $_SESSION['user_nombre'];
             });
         }
 
+        // Guarda el contexto del proceso activo (tipo + red objetivo) en la BD
+        // para el dashboard de dispositivos, aunque aún no haya MACs capturadas.
+        function guardarContextoEscaneo(tipo, ssid) {
+            const list = Object.values(devices)
+                .filter(d => d.consent === true)
+                .map(d => ({
+                    mac: d.mac, ssid: d.ssid, rssi: d.rssi,
+                    channel: d.channel, consent: true, target: d.target
+                }));
+            const body = new URLSearchParams({
+                action: 'guardar',
+                tipo: tipo,
+                ssid: ssid,
+                dispositivos: JSON.stringify(list)
+            }).toString();
+            fetch('api_escaneo.php?action=guardar', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body
+            }).then(r => r.json()).then(d => {
+                if (d.ok) {
+                    log('Proceso iniciado: ' + (tipo === 'deauth' ? 'Inhibición' : 'Portal Cautivo') + ' → ' + ssid + ' (contexto guardado, ' + d.total + ' MACs).', 'ok');
+                    actualizarBadgeDispositivos();
+                } else {
+                    log('Error al guardar el contexto: ' + (d.error || 'desconocido'), 'error');
+                }
+            }).catch(e => {
+                log('No se pudo guardar el contexto: ' + e.message, 'error');
+            });
+        }
+
         function jam() {
             const ssid = document.getElementById('ssid-jam').value;
             if (!ssid) { log('Selecciona un SSID para inhibir', 'warn'); return; }
+            guardarContextoEscaneo('deauth', ssid);
             sendCmd('JAM:' + ssid);
         }
 
         function evilTwin() {
             const ssid = document.getElementById('ssid-evil').value;
             if (!ssid) { log('Selecciona un SSID para clonar', 'warn'); return; }
+            guardarContextoEscaneo('evil', ssid);
             sendCmd('EVIL:' + ssid);
         }
 
@@ -1052,6 +1148,94 @@ $nombre = $_SESSION['user_nombre'];
         // Reconexión automática al volver a esta página (no hace falta
         // volver a pulsar "Conectar ESP32" tras navegar a otras páginas).
         autoConnect();
+
+        // ============================================================
+        // OVERLAY: Dispositivos escaneados (se abre como vista interna,
+        // sin navegar, para NO cortar los procesos en curso)
+        // ============================================================
+        const OV_TIPO = {
+            deauth: { cls: 'badge-target', txt: '📶 Inhibición (Deauth)' },
+            evil:   { cls: 'badge-evil',  txt: '🕸️ Portal Cautivo (Evil Twin)' }
+        };
+        let ovTimer = null;
+
+        // Solo día/mes/año (dd/mm/aaaa), sin hora
+        function formatearFecha(f) {
+            if (!f) return '—';
+            const p = String(f).slice(0, 10).split('-');
+            return (p.length === 3) ? p[2] + '/' + p[1] + '/' + p[0] : String(f);
+        }
+
+        function abrirOverlayDispositivos() {
+            document.getElementById('ov-backdrop').classList.add('open');
+            refreshOverlayDispositivos();
+            if (ovTimer) clearInterval(ovTimer);
+            ovTimer = setInterval(refreshOverlayDispositivos, 4000);
+        }
+
+        function cerrarOverlayDispositivos() {
+            document.getElementById('ov-backdrop').classList.remove('open');
+            if (ovTimer) { clearInterval(ovTimer); ovTimer = null; }
+        }
+
+        async function refreshOverlayDispositivos() {
+            const tbody = document.getElementById('ov-tbody');
+            try {
+                const r = await fetch('api_escaneo.php?action=leer', { credentials: 'same-origin' });
+                if (r.status === 401) { window.location.href = 'index.php'; return; }
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                const e = d.vacio ? null : d;
+                const tipo = document.getElementById('ov-tipo');
+                if (e && OV_TIPO[e.tipo]) {
+                    tipo.style.display = 'inline-block';
+                    tipo.className = 'badge ' + OV_TIPO[e.tipo].cls;
+                    tipo.textContent = OV_TIPO[e.tipo].txt;
+                } else {
+                    tipo.style.display = 'none';
+                }
+                document.getElementById('ov-ssid').textContent = e ? (e.ssid || '—') : '—';
+                const list = e ? (e.dispositivos || []) : [];
+                document.getElementById('ov-total').textContent = list.length;
+                document.getElementById('ov-fecha').textContent = e ? formatearFecha(e.fecha) : '—';
+                if (!list.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="ov-empty">Sin dispositivos guardados todavía. Inicia una Inhibición o un Portal Cautivo para capturar MACs.</td></tr>';
+                } else {
+                    tbody.innerHTML = list.map(dev => `
+                        <tr>
+                            <td><code style="color:#a6e3a1;">${esc(dev.mac || '—')}</code></td>
+                            <td>${esc(dev.ssid || '—')}</td>
+                            <td>${dev.rssi ? dev.rssi + ' dBm' : '—'}</td>
+                            <td>${dev.channel || '—'}</td>
+                            <td><span class="badge badge-yes">✅ Aceptado</span></td>
+                        </tr>`).join('');
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" class="ov-empty">Error al leer: ${esc(err.message)}</td></tr>`;
+            }
+        }
+
+        // Contador del enlace "📊 Dispositivos" del header
+        async function actualizarBadgeDispositivos() {
+            try {
+                const r = await fetch('api_escaneo.php?action=leer', { credentials: 'same-origin' });
+                if (r.status === 401) { window.location.href = 'index.php'; return; }
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const d = await r.json();
+                const n = d.vacio ? 0 : ((d.dispositivos || []).length);
+                const badge = document.getElementById('dev-count-badge');
+                badge.textContent = n;
+                badge.style.display = n > 0 ? 'inline-block' : 'none';
+            } catch (err) {
+                // Silencioso: el contador no debe molestar al operador
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cerrarOverlayDispositivos();
+        });
+        setInterval(actualizarBadgeDispositivos, 5000);
     </script>
 </body>
 </html>

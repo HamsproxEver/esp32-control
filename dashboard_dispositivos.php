@@ -148,6 +148,13 @@ $nombre = $_SESSION['user_nombre'];
             return div.innerHTML;
         }
 
+        // Solo día/mes/año (dd/mm/aaaa), sin hora
+        function formatearFecha(f) {
+            if (!f) return '—';
+            const p = String(f).slice(0, 10).split('-');
+            return (p.length === 3) ? p[2] + '/' + p[1] + '/' + p[0] : String(f);
+        }
+
         async function refresh() {
             try {
                 const r = await fetch('api_escaneo.php?action=leer', { credentials: 'same-origin' });
@@ -167,7 +174,7 @@ $nombre = $_SESSION['user_nombre'];
                 document.getElementById('lbl-tipo').innerHTML = TIPO_LABEL[data.tipo] || '<span class="badge badge-none">' + esc(data.tipo) + '</span>';
                 document.getElementById('lbl-ssid').textContent = data.ssid || '—';
                 document.getElementById('lbl-total').textContent = data.total || 0;
-                document.getElementById('lbl-fecha').textContent = data.fecha || '—';
+                document.getElementById('lbl-fecha').textContent = formatearFecha(data.fecha);
 
                 const tbody = document.getElementById('devices-tbody');
                 const list = data.dispositivos || [];
