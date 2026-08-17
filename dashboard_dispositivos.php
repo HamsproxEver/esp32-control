@@ -33,7 +33,6 @@ $nombre = $_SESSION['user_nombre'];
             border-bottom: 1px solid #313244; flex-wrap: wrap; gap: 10px;
         }
         .header-left h1 { color: #89b4fa; font-size: 20px; font-weight: 800; }
-        .header-left .subtitle { color: #6c7086; font-size: 10px; letter-spacing: 2px; margin-left: 8px; }
         .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .user-name { color: #cdd6f4; font-weight: 700; font-size: 13px; }
         .header-link { color: #89b4fa; text-decoration: none; font-size: 12px; font-weight: 600; 
@@ -42,6 +41,11 @@ $nombre = $_SESSION['user_nombre'];
         .btn-logout { background: #dc3545; color: white; padding: 6px 16px; border-radius: 8px; 
                       text-decoration: none; font-size: 12px; font-weight: 600; transition: 0.3s; }
         .btn-logout:hover { background: #c82333; }
+
+        /* Admin link */
+        .admin-link { background: #f9e2af; color: #1e1e2e; padding: 6px 14px; border-radius: 8px; 
+                      text-decoration: none; font-size: 12px; font-weight: 700; }
+        .admin-link:hover { background: #f5c842; }
 
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
@@ -87,7 +91,7 @@ $nombre = $_SESSION['user_nombre'];
 <body>
     <div class="header">
         <div class="header-left">
-            <h1>📊 Dispositivos Conectados <span class="subtitle">SEGUNDO DASHBOARD</span></h1>
+            <h1>📊 Dispositivos Conectados</h1>
         </div>
         <div class="header-right">
             <span class="user-name">👋 <?php echo htmlspecialchars($nombre); ?></span>
@@ -111,7 +115,7 @@ $nombre = $_SESSION['user_nombre'];
 
         <div class="card">
             <h3>🖧 Dispositivos conectados a la red</h3>
-            <p class="muted" style="margin-bottom:12px;">Resultados del último escaneo realizado desde el dashboard principal. Se actualiza automáticamente cada 4 segundos.</p>
+            <p class="muted" style="margin-bottom:12px;">Aquí solo aparecen los dispositivos cuya MAC fue capturada al conectarse al portal cautivo. Durante el escaneo de la red objetivo sus MAC se mantienen ocultas; al entrar en el portal cautivo y autorizar la captura, el dispositivo aparece aquí automáticamente. Se actualiza cada 4 segundos.</p>
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -125,7 +129,7 @@ $nombre = $_SESSION['user_nombre'];
                         </tr>
                     </thead>
                     <tbody id="devices-tbody">
-                        <tr><td colspan="6" class="empty">Sin escaneo aún. Ve al 📡 Dashboard, selecciona una red y pulsa "🔎 Escanear dispositivos".</td></tr>
+                        <tr><td colspan="6" class="empty">Sin escaneo aún. Ve al 📡 Dashboard, selecciona una red y pulsa "🔎 Escanear dispositivos". Las MAC se capturan cuando cada dispositivo se conecta al portal cautivo.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -156,7 +160,7 @@ $nombre = $_SESSION['user_nombre'];
                     document.getElementById('lbl-total').textContent = '0';
                     document.getElementById('lbl-fecha').textContent = '—';
                     document.getElementById('devices-tbody').innerHTML =
-                        '<tr><td colspan="6" class="empty">Sin escaneo aún. Ve al 📡 Dashboard, selecciona una red y pulsa "🔎 Escanear dispositivos".</td></tr>';
+                        '<tr><td colspan="6" class="empty">Sin escaneo aún. Ve al 📡 Dashboard, selecciona una red y pulsa "🔎 Escanear dispositivos". Las MAC se capturan cuando cada dispositivo se conecta al portal cautivo.</td></tr>';
                     return;
                 }
 
@@ -168,7 +172,7 @@ $nombre = $_SESSION['user_nombre'];
                 const tbody = document.getElementById('devices-tbody');
                 const list = data.dispositivos || [];
                 if (list.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty">El escaneo no detectó dispositivos en esa red.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty">Aún no se ha capturado ninguna MAC: los dispositivos aparecerán aquí cuando se conecten al portal cautivo.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = list.map(d => `

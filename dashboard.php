@@ -180,20 +180,20 @@ $nombre = $_SESSION['user_nombre'];
                         <option value="">Auto (detectar)</option>
                     </select>
                 </div>
+                <p class="hint">Al conectar, el ESP32 se inicializa solo y queda ACTIVO y listo a las órdenes (ya no hace falta "Iniciar estado"). La conexión se restablece automáticamente al volver a esta página.</p>
             </div>
 
             <!-- Acciones principales -->
             <div class="card">
                 <h3>⚡ Acciones</h3>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button class="btn btn-primary" id="btn-start" onclick="sendCmd('START')" disabled>▶️ Iniciar estado</button>
                     <button class="btn btn-primary" id="btn-scan" onclick="scanRedes()" disabled>📡 Escanear redes</button>
                     <button class="btn" id="btn-stop" onclick="sendCmd('STOP')" disabled>⏹ Detener</button>
                     <button class="btn" id="btn-list" onclick="sendCmd('LIST_DEVICES')" disabled>📋 Listar</button>
-		    <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
+                    <button class="btn" id="btn-ping" onclick="pingESP32()" disabled>🏓 PING</button>
                     <button class="btn" id="btn-status" onclick="sendCmd('STATUS')" disabled>ℹ️ Estado</button>
                 </div>
-                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida.</p>
+                <p class="hint">"Escanear redes" detecta los puntos de acceso (AP) de alrededor. Los botones "🔎 Escanear dispositivos" de abajo buscan los clientes conectados a la red elegida. Para comprobar que el ESP32 está vivo usa "🏓 PING".</p>
             </div>
         </div>
 
@@ -208,7 +208,7 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn btn-warning" id="btn-jam" onclick="jam()" disabled>🚫 INHIBIR</button>
                     <button class="btn" id="btn-unjam" onclick="sendCmd('STOP_JAM')" disabled>✋ Detener</button>
                 </div>
-                <p class="hint">El escaneo de dispositivos sintoniza el canal de la red elegida y detecta sus clientes (~8 s). Los resultados se envían también al dashboard "📊 Dispositivos".</p>
+                <p class="hint">El escaneo de dispositivos sintoniza el canal de la red elegida y detecta sus clientes (~8 s). Las MAC se ocultan hasta que el dispositivo se conecta al portal cautivo y autoriza la captura.</p>
             </div>
 
             <!-- Evil Twin -->
@@ -221,13 +221,14 @@ $nombre = $_SESSION['user_nombre'];
                     <button class="btn btn-purple" id="btn-evil" onclick="evilTwin()" disabled>🕸️ Activar</button>
                     <button class="btn" id="btn-unevil" onclick="sendCmd('STOP_EVIL')" disabled>✋ Detener</button>
                 </div>
-                <p class="hint">El escaneo de dispositivos aquí es independiente del de Inhibición: al escanear desde un servicio se borran automáticamente los resultados del otro.</p>
+                <p class="hint">El escaneo de dispositivos aquí es independiente del de Inhibición: al escanear desde un servicio se borran automáticamente los resultados del otro. La MAC de cada cliente se captura cuando entra en el portal cautivo.</p>
             </div>
         </div>
 
         <!-- Tabla de dispositivos -->
         <div class="card" style="margin-bottom: 20px;">
             <h3>📊 Dispositivos detectados <span class="badge badge-origen" id="tabla-origen" style="display:none;"></span></h3>
+            <p class="hint" style="margin-bottom:10px;">En escaneos de red objetivo (Inhibición / Portal Cautivo) las MAC de los clientes se mantienen ocultas: solo se revelan cuando el dispositivo se conecta al portal cautivo y autoriza la captura. Los dispositivos capturados también aparecen en el dashboard "📊 Dispositivos".</p>
             <div class="table-wrap">
                 <table id="devices-table">
                     <thead>
@@ -430,7 +431,15 @@ $nombre = $_SESSION['user_nombre'];
             log('Estado: ' + st.text + (msg ? ' | ' + msg : ''), 'info');
         }
 
-        // Conectar al ESP32 vía WebSerial (con diagnóstico completo)
+        // ============================================================
+        // CONEXIÓN AL ESP32 (WebSerial)
+        //  - connectESP32(): el usuario elige el puerto (gesto del navegador)
+        //  - openPort(): abre el puerto, deja el panel ACTIVO y envía START
+        //  - autoConnect(): al cargar la página, si ya hay permiso concedido
+        //    se reconecta solo (getPorts no pide confirmación). Así al navegar
+        //    entre páginas el ESP32 no queda "desconectado" al volver.
+        // ============================================================
+
         async function connectESP32() {
             try {
                 if (!window.isSecureContext) {
@@ -443,28 +452,45 @@ $nombre = $_SESSION['user_nombre'];
                 }
 
                 logEvent('info', 'conexión', 'Mostrando selector de puertos USB...');
-                port = await navigator.serial.requestPort({
+                const p = await navigator.serial.requestPort({
                     filters: KNOWN_VIDS.map(v => ({ usbVendorId: v }))
                 });
-                if (!port) {
+                if (!p) {
                     logEvent('warn', 'conexión', 'Selector cancelado: no se eligió ningún puerto.');
                     return;
                 }
+                await openPort(p);
 
-                const info = port.getInfo ? port.getInfo() : {};
+            } catch (err) {
+                const name = err && err.name ? err.name : 'Error';
+                let det = err && err.message ? err.message : String(err);
+                if (name === 'NotFoundError') det = 'Se canceló el selector de puertos.';
+                else if (name === 'InvalidStateError') det = 'El puerto ya está abierto o no es compatible.';
+                else if (name === 'NetworkError') det = 'No se pudo abrir el puerto: ¿cable de datos? ¿placa apagada?';
+                else if (name === 'SecurityError') det = 'Permiso denegado por el navegador.';
+                logEvent('error', 'conexión', 'Fallo al conectar (' + name + '): ' + (err && err.message ? err.message : String(err)), det);
+                connected = false;
+                port = null; writer = null; reader = null;
+            }
+        }
+
+        async function openPort(p) {
+            try {
+                const info = p.getInfo ? p.getInfo() : {};
                 logEvent('info', 'conexión', 'Puerto elegido: VID 0x' + (info.usbVendorId || 0).toString(16) + ' / PID 0x' + (info.usbProductId || 0).toString(16));
 
-                await port.open({ baudRate: 115200 });
+                await p.open({ baudRate: 115200 });
                 logEvent('ok', 'conexión', 'Puerto abierto correctamente a 115200 baudios.');
 
-                writer = port.writable.getWriter();
-                reader = port.readable.getReader();
+                writer = p.writable.getWriter();
+                reader = p.readable.getReader();
+                port = p;
                 connected = true;
                 rxCount = 0;
 
                 document.getElementById('btn-connect').textContent = 'Desconectar';
                 document.getElementById('btn-connect').onclick = disconnectESP32;
-                updateState('idle', 'Conectado');
+                updateState('active', 'ESP32 conectado y listo');
                 logEvent('ok', 'conexión', 'ESP32 conectado. Esperando respuesta del firmware...');
 
                 enableControls(true);
@@ -478,19 +504,33 @@ $nombre = $_SESSION['user_nombre'];
                     }
                 }, 3000);
 
-                // Inicializar el ESP32 al conectar (comando START del firmware)
+                // Inicializar el ESP32 al conectar: conectar = ACTIVO y listo
+                // a las órdenes (sustituye al antiguo botón "Iniciar estado").
                 setTimeout(() => { sendCmd('START'); }, 500);
 
             } catch (err) {
                 const name = err && err.name ? err.name : 'Error';
                 let det = err && err.message ? err.message : String(err);
-                if (name === 'NotFoundError') det = 'Se canceló el selector de puertos.';
-                else if (name === 'InvalidStateError') det = 'El puerto ya está abierto o no es compatible.';
+                if (name === 'InvalidStateError') det = 'El puerto ya está abierto o no es compatible.';
                 else if (name === 'NetworkError') det = 'No se pudo abrir el puerto: ¿cable de datos? ¿placa apagada?';
                 else if (name === 'SecurityError') det = 'Permiso denegado por el navegador.';
-                logEvent('error', 'conexión', 'Fallo al conectar (' + name + '): ' + (err && err.message ? err.message : String(err)), det);
+                logEvent('error', 'conexión', 'Fallo al abrir el puerto (' + name + '): ' + (err && err.message ? err.message : String(err)), det);
                 connected = false;
                 port = null; writer = null; reader = null;
+            }
+        }
+
+        // Reconexión automática: el navegador conserva el permiso concedido,
+        // así que al cargar la página se reabre el puerto sin pedir confirmación.
+        async function autoConnect() {
+            if (!navigator.serial || !window.isSecureContext) return;
+            try {
+                const puertos = await navigator.serial.getPorts();
+                if (!puertos || puertos.length === 0) return;
+                logEvent('info', 'conexión', 'Permiso WebSerial previo detectado: reconectando al ESP32 automáticamente...');
+                await openPort(puertos[0]);
+            } catch (e) {
+                logEvent('warn', 'conexión', 'No se pudo auto-reconectar: ' + (e && e.message ? e.message : String(e)));
             }
         }
 
@@ -547,9 +587,20 @@ $nombre = $_SESSION['user_nombre'];
         //                   (botones de Inhibición y Portal Cautivo).
         //                   Cada servicio es independiente: escanear
         //                   desde uno borra los resultados del otro.
+        //
+        //  PRIVACIDAD DE MACs: en los escaneos de red objetivo
+        //  (deauth / evil) las direcciones MAC reales NO se muestran.
+        //  Solo se revelan cuando el dispositivo se conecta al portal
+        //  cautivo (consent = true) y autoriza la captura. Ese es el
+        //  momento en que aparece en la tabla y en el dashboard de
+        //  dispositivos.
         // ============================================================
 
         const NOMBRE_ORIGEN = { redes: 'Escaneo de redes', deauth: 'Inhibición (Deauth)', evil: 'Portal Cautivo (Evil Twin)' };
+
+        function esEscaneoClientes() {
+            return scanSource === 'deauth' || scanSource === 'evil';
+        }
 
         function scanRedes() {
             scanSource = 'redes';
@@ -581,7 +632,9 @@ $nombre = $_SESSION['user_nombre'];
             sendCmd('SCAN_CLIENTS:' + ssid);
         }
 
-        // Guarda el escaneo actual en la BD para el segundo dashboard
+        // Guarda el escaneo actual en la BD para el segundo dashboard.
+        // SOLO se guardan los dispositivos con MAC capturada por el portal
+        // cautivo (consent = true); el resto permanece oculto.
         function guardarEscaneo() {
             if (scanSource !== 'deauth' && scanSource !== 'evil') {
                 log('Escaneo de redes: no se guarda en el dashboard de dispositivos', 'info');
@@ -589,10 +642,12 @@ $nombre = $_SESSION['user_nombre'];
             }
             const selId = (scanSource === 'deauth') ? 'ssid-jam' : 'ssid-evil';
             const ssid = document.getElementById(selId).value;
-            const list = Object.values(devices).map(d => ({
-                mac: d.mac, ssid: d.ssid, rssi: d.rssi,
-                channel: d.channel, consent: d.consent, target: d.target
-            }));
+            const list = Object.values(devices)
+                .filter(d => d.consent === true)
+                .map(d => ({
+                    mac: d.mac, ssid: d.ssid, rssi: d.rssi,
+                    channel: d.channel, consent: true, target: d.target
+                }));
             const body = new URLSearchParams({
                 action: 'guardar',
                 tipo: scanSource,
@@ -606,7 +661,7 @@ $nombre = $_SESSION['user_nombre'];
                 body: body
             }).then(r => r.json()).then(d => {
                 if (d.ok) {
-                    log('Escaneo guardado (' + d.total + ' dispositivos). Disponible en el dashboard 📊 Dispositivos.', 'ok');
+                    log('Escaneo guardado (' + d.total + ' dispositivos con MAC capturada). Disponible en el dashboard 📊 Dispositivos.', 'ok');
                 } else {
                     log('Error al guardar el escaneo: ' + (d.error || 'desconocido'), 'error');
                 }
@@ -690,7 +745,12 @@ $nombre = $_SESSION['user_nombre'];
 
         function dispatch(msg) {
             switch(msg.t) {
-                case 'status': updateState(msg.type, msg.msg); break;
+                case 'status': {
+                    // Conectado y sin tarea = ACTIVO (no "inactivo")
+                    const st = (msg.type === 'idle' || msg.type === 'ready') ? 'active' : msg.type;
+                    updateState(st, msg.msg);
+                    break;
+                }
                 case 'device': addOrUpdateDevice(msg); break;
                 case 'devices': replaceDevices(msg.items); break;
                 case 'jamming': 
@@ -701,7 +761,14 @@ $nombre = $_SESSION['user_nombre'];
                         log('Jamming detenido: ' + (msg.msg || ''), 'ok');
                     }
                     break;
-                case 'consent': updateConsent(msg.mac, msg.consent); break;
+                case 'consent':
+                    updateConsent(msg.mac, msg.consent);
+                    if (msg.consent && esEscaneoClientes()) {
+                        const macC = String(msg.mac || '').toUpperCase();
+                        logEvent('ok', 'portal', 'MAC capturada por el portal cautivo: ' + macC, 'El dispositivo se conectó al portal y autorizó la captura. Ya aparece en el dashboard de dispositivos.');
+                        guardarEscaneo();
+                    }
+                    break;
                 case 'emergency': updateState('emergency', 'PARADA DE EMERGENCIA'); break;
                 case 'scan_end': log('Escaneo de redes finalizado: ' + msg.found + ' redes', 'ok'); break;
                 case 'scan_clients_end':
@@ -756,7 +823,8 @@ $nombre = $_SESSION['user_nombre'];
 
             switch (st) {
                 case 'READY':
-                    updateState('idle', msg || 'Sistema listo');
+                    // Conectado y listo = ACTIVO
+                    updateState('active', msg || 'Sistema listo y activo');
                     break;
                 case 'ACTIVE':
                     updateState('active', msg || 'Sistema activo');
@@ -814,6 +882,12 @@ $nombre = $_SESSION['user_nombre'];
             };
             renderDevices();
             updateSSIDSelectors();
+            // Si el dispositivo se conectó al portal (consent), su MAC queda
+            // capturada: se guarda de inmediato para el segundo dashboard.
+            if (dev.consent && esEscaneoClientes()) {
+                logEvent('ok', 'portal', 'MAC capturada por el portal cautivo: ' + mac, 'Dispositivo conectado al portal y autorizado.');
+                guardarEscaneo();
+            }
         }
 
         function replaceDevices(items) {
@@ -857,16 +931,33 @@ $nombre = $_SESSION['user_nombre'];
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6c7086;">Sin dispositivos detectados</td></tr>';
                 return;
             }
-            tbody.innerHTML = list.map(d => `
-                <tr>
-                    <td>${d.mac}</td>
-                    <td>${esc(d.ssid)}</td>
-                    <td>${d.rssi} dBm</td>
-                    <td>${d.channel}</td>
-                    <td>${d.target ? '<span class="badge badge-target">SÍ</span>' : '<span class="badge badge-no">NO</span>'}</td>
-                    <td>${d.consent ? '<span class="badge badge-yes">SÍ</span>' : '<span class="badge badge-no">NO</span>'}</td>
-                </tr>
-            `).join('');
+
+            // En escaneos de red objetivo (deauth/evil) las MAC se ocultan
+            // hasta que el dispositivo se conecta al portal cautivo.
+            const ocultarMac = esEscaneoClientes();
+            const visibles = list.filter(d => !ocultarMac || d.consent === true);
+            const ocultos  = list.filter(d => ocultarMac && d.consent !== true);
+
+            let html = '';
+            if (ocultos.length > 0) {
+                html += '<tr><td colspan="6" style="text-align:center; color:#f9e2af; font-size:12px; padding:8px;">' +
+                        '🔒 ' + ocultos.length + ' dispositivo(s) detectado(s) — MAC oculta. Se captura y revela cuando el dispositivo se conecte al portal cautivo.</td></tr>';
+            }
+            if (visibles.length === 0) {
+                html += '<tr><td colspan="6" style="text-align:center; color:#6c7086;">Esperando que un dispositivo se conecte al portal cautivo para capturar su MAC...</td></tr>';
+            } else {
+                html += visibles.map(d => `
+                    <tr>
+                        <td>${d.mac}</td>
+                        <td>${esc(d.ssid)}</td>
+                        <td>${d.rssi} dBm</td>
+                        <td>${d.channel}</td>
+                        <td>${d.target ? '<span class="badge badge-target">SÍ</span>' : '<span class="badge badge-no">NO</span>'}</td>
+                        <td>${d.consent ? '<span class="badge badge-yes">SÍ</span>' : '<span class="badge badge-no">NO</span>'}</td>
+                    </tr>
+                `).join('');
+            }
+            tbody.innerHTML = html;
         }
 
         function updateSSIDSelectors() {
@@ -895,7 +986,7 @@ $nombre = $_SESSION['user_nombre'];
             for (let id of ['btn-scan','btn-stop','btn-list','btn-ping','btn-status',
                             'btn-jam','btn-unjam','btn-evil','btn-unevil',
                             'btn-scan-jam','btn-scan-evil',
-                            'btn-cmd-send','btn-start']) {
+                            'btn-cmd-send']) {
                 document.getElementById(id).disabled = !en;
             }
         }
@@ -957,6 +1048,10 @@ $nombre = $_SESSION['user_nombre'];
         if (!navigator.serial) {
             logEvent('error', 'sistema', 'Este navegador no tiene WebSerial (usa Chrome/Edge 89+).');
         }
+
+        // Reconexión automática al volver a esta página (no hace falta
+        // volver a pulsar "Conectar ESP32" tras navegar a otras páginas).
+        autoConnect();
     </script>
 </body>
 </html>
