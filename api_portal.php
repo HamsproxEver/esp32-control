@@ -1,13 +1,4 @@
 <?php
-// ============================================================
-// api_portal.php - API para gestionar los registros del portal cautivo
-//
-//  GET  ?action=listar     -> devuelve todos los registros (JSON)
-//  POST ?action=guardar_registro -> guarda un nuevo registro
-//      campos: nombres, apellidos, cedula, ip, mac, ssid
-//
-// Solo accesible para sesiones iniciadas.
-// ============================================================
 require_once 'config.php';
 
 if (!isset($_SESSION['user_id'])) {
@@ -20,7 +11,6 @@ if (!isset($_SESSION['user_id'])) {
 header('Content-Type: application/json');
 $accion = $_GET['action'] ?? ($_POST['action'] ?? '');
 
-// ---------- LISTAR REGISTROS ----------
 if ($accion === 'listar') {
     try {
         $stmt = $pdo->query("SELECT id, nombres, apellidos, cedula, ip, mac, ssid, fecha FROM portal_registros ORDER BY fecha DESC LIMIT 500");
@@ -33,7 +23,6 @@ if ($accion === 'listar') {
     exit();
 }
 
-// ---------- GUARDAR REGISTRO ----------
 if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombres = trim(strip_tags($_POST['nombres'] ?? ''));
     $apellidos = trim(strip_tags($_POST['apellidos'] ?? ''));
@@ -42,36 +31,31 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $mac = strtoupper(trim(strip_tags($_POST['mac'] ?? '')));
     $ssid = trim(strip_tags($_POST['ssid'] ?? ''));
 
-    // Validaciones básicas
     if (empty($nombres) || empty($apellidos) || empty($cedula) || empty($ip) || empty($mac)) {
-        echo json_encode(['error' => 'campos_incompletos', 'detalle' => 'Todos los campos son obligatorios']);
+        echo json_encode(['error' => 'campos_incompletos']);
         exit();
     }
 
-    // Validar formato de MAC
     if (!preg_match('/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/', $mac)) {
-        echo json_encode(['error' => 'mac_invalida', 'detalle' => 'Formato de MAC inválido']);
+        echo json_encode(['error' => 'mac_invalida']);
         exit();
     }
 
-    // Validar formato de IP (IPv4 o IPv6)
     if (!filter_var($ip, FILTER_VALIDATE_IP)) {
-        echo json_encode(['error' => 'ip_invalida', 'detalle' => 'Formato de IP inválido']);
+        echo json_encode(['error' => 'ip_invalida']);
         exit();
     }
 
-    // Validar cédula (solo números, longitud entre 8 y 15)
     if (!preg_match('/^[0-9]{8,15}$/', $cedula)) {
-        echo json_encode(['error' => 'cedula_invalida', 'detalle' => 'La cédula debe contener solo números (8-15 dígitos)']);
+        echo json_encode(['error' => 'cedula_invalida']);
         exit();
     }
 
     try {
-        // Verificar si ya existe un registro con esta cédula y MAC
         $stmt = $pdo->prepare("SELECT id FROM portal_registros WHERE cedula = ? AND mac = ?");
         $stmt->execute([$cedula, $mac]);
         if ($stmt->fetch()) {
-            echo json_encode(['error' => 'registro_existente', 'detalle' => 'Ya existe un registro con esta cédula y MAC']);
+            echo json_encode(['error' => 'registro_existente']);
             exit();
         }
 
@@ -89,17 +73,6 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['error' => 'error_bd', 'detalle' => $e->getMessage()]);
     }
     exit();
-}
-
-// Si el ESP32 envía datos en formato simple (para compatibilidad)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nombres']) && isset($_POST['mac'])) {
-    // Reutilizar la lógica anterior
-    $_POST['action'] = 'guardar_registro';
-    // Ejecutar nuevamente
-    $accion = 'guardar_registro';
-    // Aquí se ejecutaría el código de guardar registro
-    // Pero para evitar duplicación, redirigimos la lógica
-    // (en producción, reestructurar para evitar este bloque)
 }
 
 echo json_encode(['error' => 'accion_invalida']);

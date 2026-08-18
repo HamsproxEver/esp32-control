@@ -20,7 +20,6 @@ $nombre = $_SESSION['user_nombre'];
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #1e1e2e; color: #cdd6f4; font-family: 'Inter', sans-serif; min-height: 100vh; }
 
-        /* Header */
         .header {
             background: #181825; padding: 12px 24px;
             display: flex; justify-content: space-between; align-items: center;
@@ -39,7 +38,6 @@ $nombre = $_SESSION['user_nombre'];
 
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
-        /* Estado */
         .status-bar {
             background: #181825; padding: 16px 24px; border-radius: 12px;
             margin-bottom: 20px; display: flex; justify-content: space-between;
@@ -54,7 +52,6 @@ $nombre = $_SESSION['user_nombre'];
         .led.jamming { background: #f38ba8; animation: pulse 0.2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        /* Botones */
         .btn {
             background: #313244; color: #cdd6f4; border: 1px solid #45475a;
             border-radius: 8px; padding: 10px 20px; font-weight: 600;
@@ -73,7 +70,6 @@ $nombre = $_SESSION['user_nombre'];
         .btn-success { background: #059669; color: white; border-color: #10b981; }
         .btn-success:hover { background: #047857; }
 
-        /* Grid */
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
         @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
@@ -83,7 +79,6 @@ $nombre = $_SESSION['user_nombre'];
         }
         .card h3 { color: #89b4fa; font-size: 15px; margin-bottom: 16px; font-weight: 700; }
 
-        /* Conexión */
         .connect-section { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .port-select {
             background: #313244; color: #cdd6f4; border: 1px solid #45475a;
@@ -91,7 +86,6 @@ $nombre = $_SESSION['user_nombre'];
             min-width: 280px; font-size: 13px;
         }
 
-        /* Selectores SSID */
         .ssid-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
         .ssid-select {
             background: #313244; color: #cdd6f4; border: 1px solid #45475a;
@@ -100,7 +94,6 @@ $nombre = $_SESSION['user_nombre'];
         }
         .hint { color: #6c7086; font-size: 11px; margin-top: 4px; }
 
-        /* Tabla */
         .table-wrap { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th { background: #313244; padding: 10px 12px; text-align: left; font-weight: 600; color: #89b4fa; }
@@ -115,7 +108,6 @@ $nombre = $_SESSION['user_nombre'];
         .badge-success { background: #a6e3a1; color: #1e1e2e; }
         .badge-portal { background: #f5c842; color: #1e1e2e; }
 
-        /* Terminal */
         .terminal {
             background: #11111b; border: 1px solid #313244; border-radius: 12px;
             padding: 16px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -128,7 +120,6 @@ $nombre = $_SESSION['user_nombre'];
         .terminal .log-warn { color: #f9e2af; }
         .terminal .log-cmd { color: #89b4fa; }
 
-        /* Botón emergencia */
         .emergency-section { margin-top: 20px; text-align: center; }
         .btn-emergency {
             background: #b91c1c; color: white; padding: 14px 40px;
@@ -138,7 +129,6 @@ $nombre = $_SESSION['user_nombre'];
         }
         .btn-emergency:hover { background: #dc2626; transform: scale(1.05); box-shadow: 0 0 30px rgba(220, 38, 38, 0.4); }
 
-        /* Admin link */
         .admin-link { background: #f9e2af; color: #1e1e2e; padding: 6px 14px; border-radius: 8px; 
                       text-decoration: none; font-size: 12px; font-weight: 700; }
         .admin-link:hover { background: #f5c842; }
@@ -146,7 +136,6 @@ $nombre = $_SESSION['user_nombre'];
         .btn-active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
         .log-err-bold { font-weight: 700; }
 
-        /* Tabs para dispositivos */
         .tabs {
             display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #313244;
         }
@@ -622,8 +611,7 @@ $nombre = $_SESSION['user_nombre'];
         }
 
         // ============================================================
-        // ESCANEOS
-        // ============================================================
+        // ESCANEOS        // ============================================================
 
         const NOMBRE_ORIGEN = { redes: 'Escaneo de redes', deauth: 'Inhibición (Deauth)', evil: 'Portal Cautivo (Evil Twin)' };
 
@@ -755,96 +743,15 @@ $nombre = $_SESSION['user_nombre'];
         }
 
         // ============================================================
-        // LECTURA DEL ESP32
-        // ============================================================
-
-        async function readLoop() {
-            const decoder = new TextDecoder();
-            let buffer = '';
-            while (connected && port && port.readable) {
-                try {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    rxCount++;
-                    lastRxAt = Date.now();
-                    if (rxCount === 1) {
-                        clearTimeout(connWatchdog);
-                        logEvent('ok', 'conexión', 'Primeros datos recibidos del ESP32. ¡El firmware está vivo!');
-                    }
-                    buffer += decoder.decode(value, { stream: true });
-                    let lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (let line of lines) {
-                        handleLine(line.trim());
-                    }
-                } catch (e) {
-                    logEvent('error', 'conexión', 'Error leyendo del puerto: ' + e.message);
-                    break;
-                }
-            }
-            logEvent('warn', 'conexión', 'Bucle de lectura detenido.');
-        }
-
-        function handleLine(line) {
-            if (!line) return;
-            logEvent('rx', 'esp32', line.length > 140 ? line.substring(0, 140) + '…' : line);
-            if (line.startsWith('{')) {
-                try { dispatch(JSON.parse(line)); }
-                catch (e) { logEvent('error', 'esp32', 'JSON inválido recibido: ' + line); }
-            } else {
-                handleLegacy(line);
-            }
-        }
-
-        function dispatch(msg) {
-            switch(msg.t) {
-                case 'status': {
-                    const st = (msg.type === 'idle' || msg.type === 'ready') ? 'active' : msg.type;
-                    updateState(st, msg.msg);
-                    break;
-                }
-                case 'device': addOrUpdateDevice(msg); break;
-                case 'devices': replaceDevices(msg.items); break;
-                case 'jamming': 
-                    if (msg.active) {
-                        log('Jamming activo: ' + msg.ssid + ' | ch' + msg.channel + ' | tramas:' + msg.sent + ' | clientes:' + msg.clients, 'warn');
-                    } else {
-                        log('Jamming detenido: ' + (msg.msg || ''), 'ok');
-                    }
-                    break;
-                case 'consent':
-                    updateConsent(msg.mac, msg.consent);
-                    if (msg.consent && esEscaneoClientes()) {
-                        const macC = String(msg.mac || '').toUpperCase();
-                        logEvent('ok', 'portal', 'MAC capturada por el portal cautivo: ' + macC, 'El dispositivo se conectó al portal y autorizó la captura.');
-                        guardarEscaneo();
-                    }
-                    break;
-                case 'emergency': updateState('emergency', 'PARADA DE EMERGENCIA'); break;
-                case 'scan_end': log('Escaneo de redes finalizado: ' + msg.found + ' redes', 'ok'); break;
-                case 'scan_clients_end':
-                    log('Escaneo de dispositivos finalizado: ' + msg.found + ' encontrados', 'ok');
-                    guardarEscaneo();
-                    break;
-                case 'log': log('[ESP32] ' + msg.msg, 'info'); break;
-                case 'ping': log('ESP32 responde OK (PONG)', 'ok'); break;
-                case 'clear': clearDevices(); break;
-                case 'portal_registro':
-                    // Cuando el ESP32 envía un registro del portal, lo guardamos en BD
-                    guardarRegistroPortal(msg);
-                    break;
-                default:
-                    logEvent('warn', 'esp32', 'Tipo de mensaje desconocido: ' + (msg.t || '(vacío)'));
-                    break;
-            }
-        }
-
-        // ============================================================
         // REGISTROS DEL PORTAL CAUTIVO
         // ============================================================
 
         function guardarRegistroPortal(data) {
-            // Datos esperados: { nombres, apellidos, cedula, ip, mac, ssid }
+            if (!data.nombres || !data.apellidos || !data.cedula || !data.ip || !data.mac) {
+                logEvent('error', 'portal', 'Datos incompletos para guardar registro: ' + JSON.stringify(data));
+                return;
+            }
+            
             const body = new URLSearchParams({
                 action: 'guardar_registro',
                 nombres: data.nombres || '',
@@ -867,7 +774,7 @@ $nombre = $_SESSION['user_nombre'];
                     logEvent('ok', 'portal', 'Registro guardado: ' + data.nombres + ' ' + data.apellidos + ' (Cédula: ' + data.cedula + ')');
                     refreshPortalRegistros();
                 } else {
-                    logEvent('error', 'portal', 'Error al guardar registro: ' + (res.error || 'desconocido'));
+                    logEvent('error', 'portal', 'Error al guardar registro: ' + (res.error || res.detalle || 'desconocido'));
                 }
             })
             .catch(e => {
@@ -906,6 +813,144 @@ $nombre = $_SESSION['user_nombre'];
             .catch(e => {
                 document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
             });
+        }
+
+        // ============================================================
+        // LECTURA DEL ESP32
+        // ============================================================
+
+        async function readLoop() {
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (connected && port && port.readable) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    rxCount++;
+                    lastRxAt = Date.now();
+                    if (rxCount === 1) {
+                        clearTimeout(connWatchdog);
+                        logEvent('ok', 'conexión', 'Primeros datos recibidos del ESP32. ¡El firmware está vivo!');
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (let line of lines) {
+                        handleLine(line.trim());
+                    }
+                } catch (e) {
+                    logEvent('error', 'conexión', 'Error leyendo del puerto: ' + e.message);
+                    break;
+                }
+            }
+            logEvent('warn', 'conexión', 'Bucle de lectura detenido.');
+        }
+
+        function handleLine(line) {
+            if (!line) return;
+            logEvent('rx', 'esp32', line.length > 140 ? line.substring(0, 140) + '…' : line);
+            
+            // Procesar logs del portal en formato texto (legacy)
+            if (line.includes('[portal] registro:')) {
+                const regex = /\[portal\] registro:\s*([^(]+)\s*\(cédula\s*([^,]+),\s*IP\s*([^,]+),\s*MAC\s*([^)]+)\)/;
+                const match = line.match(regex);
+                if (match) {
+                    const nombreCompleto = match[1].trim();
+                    const cedula = match[2].trim();
+                    const ip = match[3].trim();
+                    const mac = match[4].trim();
+                    const partes = nombreCompleto.split(' ');
+                    let nombres = partes[0] || '';
+                    let apellidos = partes.slice(1).join(' ') || '';
+                    const selId = (scanSource === 'deauth') ? 'ssid-jam' : 'ssid-evil';
+                    const ssid = document.getElementById(selId)?.value || 'desconocido';
+                    guardarRegistroPortal({
+                        nombres: nombres,
+                        apellidos: apellidos,
+                        cedula: cedula,
+                        ip: ip,
+                        mac: mac,
+                        ssid: ssid
+                    });
+                }
+                return;
+            }
+            
+            if (line.startsWith('{')) {
+                try { dispatch(JSON.parse(line)); }
+                catch (e) { logEvent('error', 'esp32', 'JSON inválido recibido: ' + line); }
+            } else {
+                handleLegacy(line);
+            }
+        }
+
+        function dispatch(msg) {
+            switch(msg.t) {
+                case 'status': {
+                    const st = (msg.type === 'idle' || msg.type === 'ready') ? 'active' : msg.type;
+                    updateState(st, msg.msg);
+                    break;
+                }
+                case 'device': addOrUpdateDevice(msg); break;
+                case 'devices': replaceDevices(msg.items); break;
+                case 'jamming': 
+                    if (msg.active) {
+                        log('Jamming activo: ' + msg.ssid + ' | ch' + msg.channel + ' | tramas:' + msg.sent + ' | clientes:' + msg.clients, 'warn');
+                    } else {
+                        log('Jamming detenido: ' + (msg.msg || ''), 'ok');
+                    }
+                    break;
+                case 'consent':
+                    updateConsent(msg.mac, msg.consent);
+                    if (msg.consent && esEscaneoClientes()) {
+                        const macC = String(msg.mac || '').toUpperCase();
+                        logEvent('ok', 'portal', 'MAC capturada por el portal cautivo: ' + macC);
+                        guardarEscaneo();
+                    }
+                    break;
+                case 'emergency': updateState('emergency', 'PARADA DE EMERGENCIA'); break;
+                case 'scan_end': log('Escaneo de redes finalizado: ' + msg.found + ' redes', 'ok'); break;
+                case 'scan_clients_end':
+                    log('Escaneo de dispositivos finalizado: ' + msg.found + ' encontrados', 'ok');
+                    guardarEscaneo();
+                    break;
+                case 'log':
+                    if (msg.msg && msg.msg.includes('[portal] registro:')) {
+                        const logMsg = msg.msg;
+                        const regex = /\[portal\] registro:\s*([^(]+)\s*\(cédula\s*([^,]+),\s*IP\s*([^,]+),\s*MAC\s*([^)]+)\)/;
+                        const match = logMsg.match(regex);
+                        if (match) {
+                            const nombreCompleto = match[1].trim();
+                            const cedula = match[2].trim();
+                            const ip = match[3].trim();
+                            const mac = match[4].trim();
+                            const partes = nombreCompleto.split(' ');
+                            let nombres = partes[0] || '';
+                            let apellidos = partes.slice(1).join(' ') || '';
+                            const selId = (scanSource === 'deauth') ? 'ssid-jam' : 'ssid-evil';
+                            const ssid = document.getElementById(selId)?.value || 'desconocido';
+                            guardarRegistroPortal({
+                                nombres: nombres,
+                                apellidos: apellidos,
+                                cedula: cedula,
+                                ip: ip,
+                                mac: mac,
+                                ssid: ssid
+                            });
+                        }
+                    } else {
+                        log('[ESP32] ' + msg.msg, 'info');
+                    }
+                    break;
+                case 'ping': log('ESP32 responde OK (PONG)', 'ok'); break;
+                case 'clear': clearDevices(); break;
+                case 'portal_registro':
+                    guardarRegistroPortal(msg);
+                    break;
+                default:
+                    logEvent('warn', 'esp32', 'Tipo de mensaje desconocido: ' + (msg.t || '(vacío)'));
+                    break;
+            }
         }
 
         // ============================================================
@@ -1067,21 +1112,6 @@ $nombre = $_SESSION['user_nombre'];
                 logEvent('error', 'esp32', line, 'El firmware no reconoce ese comando.');
                 return;
             }
-            // Para el portal: formato "PORTAL_REGISTRO:nombres|apellidos|cedula|ip|mac|ssid"
-            if (line.startsWith('PORTAL_REGISTRO:')) {
-                const parts = line.substring(16).split('|');
-                if (parts.length >= 6) {
-                    guardarRegistroPortal({
-                        nombres: parts[0] || '',
-                        apellidos: parts[1] || '',
-                        cedula: parts[2] || '',
-                        ip: parts[3] || '',
-                        mac: parts[4] || '',
-                        ssid: parts[5] || ''
-                    });
-                }
-                return;
-            }
         }
 
         function handleStatusLine(status) {
@@ -1187,9 +1217,8 @@ $nombre = $_SESSION['user_nombre'];
 
         autoConnect();
         refreshPortalRegistros();
-        setInterval(refreshPortalRegistros, 10000); // Actualizar cada 10 segundos
+        setInterval(refreshPortalRegistros, 10000);
 
-        // Cerrar sesión por inactividad (30 min)
         let inactivityTimer;
         function resetInactivityTimer() {
             clearTimeout(inactivityTimer);
