@@ -1,12 +1,12 @@
 <?php
 ob_start();
 
-$host = getenv('DB_HOST') ?: 'localhost';
+$host = getenv('DB_HOST') ?: 'aws-0-sa-east-1.pooler.supabase.com';
 $port = getenv('DB_PORT') ?: '5432';
 $dbname = getenv('DB_NAME') ?: 'postgres';
-$user = getenv('DB_USER') ?: 'postgres';
-$pass = getenv('DB_PASS') ?: '';
-$jwtSecret = getenv('JWT_SECRET') ?: 'default_secret_change_me';
+$user = getenv('DB_USER') ?: 'postgres.mhbgnmubnjntllxjokjq';
+$pass = getenv('DB_PASS') ?: 'esp32-control-db';
+$jwtSecret = getenv('JWT_SECRET') ?: 'idkwhyiamdoingthis';
 
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', 1);
