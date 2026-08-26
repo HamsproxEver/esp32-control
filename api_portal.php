@@ -58,16 +58,42 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         }
 
-        $stmt = $pdo->prepare("
-            INSERT INTO portal_registros (correo, contrasena, ip, mac, ssid, user_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([$correo, $contrasena, $ip, $mac, $ssid, $_SESSION['user_id']]);
+	global $cipherKey;
+	$contrasena_cifrada = encryptData($contrasena, $cipherKey);
+
+	$stmt = $pdo->prepare("
+    	    INSERT INTO portal_registros (correo, contrasena, ip, mac, ssid, user_id)
+   	    VALUES (?, ?, ?, ?, ?, ?)
+	");
+	$stmt->execute([$correo, $contrasena_cifrada, $ip, $mac, $ssid, $_SESSION['user_id']]);
 
         logActividad('Portal Cautivo', 'Nuevo registro: ' . $correo . ' (MAC: ' . $mac . ', IP: ' . $ip . ')');
 
         echo json_encode(['ok' => true, 'id' => $pdo->lastInsertId()]);
     } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'error_bd', 'detalle' => $e->getMessage()]);
+    }
+    exit();
+}
+if ($accion === 'descifrar') {
+    $id = intval($_GET['id'] ?? 0);
+    if (!$id) {
+        echo json_encode(['error' => 'id_invalido']);
+        exit();
+    }
+    try {
+        $stmt = $pdo->prepare("SELECT contrasena FROM portal_registros WHERE id = ?");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            echo json_encode(['error' => 'no_encontrado']);
+            exit();
+        }
+        global $cipherKey;
+        $plana = decryptData($row['contrasena'], $cipherKey);
+        echo json_encode(['ok' => true, 'contrasena' => $plana]);
+    } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['error' => 'error_bd', 'detalle' => $e->getMessage()]);
     }

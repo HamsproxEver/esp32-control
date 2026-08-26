@@ -137,4 +137,26 @@ function getQRCodeUrl($username, $secret, $issuer = 'ESP32-Control') {
     $otpauth = "otpauth://totp/{$label}?secret={$secret}&issuer={$issuer}";
     return "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . urlencode($otpauth);
 }
+// ============================================
+// Cifrado AES-256-CBC para contraseñas del portal
+// ============================================
+$cipherKey = hash('sha256', $jwtSecret, true);
+
+function encryptData($plaintext, $key) {
+    if (empty($plaintext)) return '';
+    $iv = random_bytes(16);
+    $encrypted = openssl_encrypt($plaintext, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+    if ($encrypted === false) return '';
+    return base64_encode($iv . $encrypted);
+}
+
+function decryptData($ciphertext, $key) {
+    if (empty($ciphertext)) return '';
+    $data = base64_decode($ciphertext);
+    if (strlen($data) < 16) return '';
+    $iv = substr($data, 0, 16);
+    $encrypted = substr($data, 16);
+    $decrypted = openssl_decrypt($encrypted, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+    return ($decrypted === false) ? '' : $decrypted;
+}
 ?>
