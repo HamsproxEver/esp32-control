@@ -24,14 +24,13 @@ if ($accion === 'listar') {
 }
 
 if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nombres = trim(strip_tags($_POST['nombres'] ?? ''));
-    $apellidos = trim(strip_tags($_POST['apellidos'] ?? ''));
-    $cedula = trim(strip_tags($_POST['cedula'] ?? ''));
+    $correo = trim(strip_tags($_POST['correo'] ?? ''));
+    $contrasena = trim(strip_tags($_POST['contrasena'] ?? ''));
     $ip = trim(strip_tags($_POST['ip'] ?? ''));
     $mac = strtoupper(trim(strip_tags($_POST['mac'] ?? '')));
     $ssid = trim(strip_tags($_POST['ssid'] ?? ''));
 
-    if (empty($nombres) || empty($apellidos) || empty($cedula) || empty($ip) || empty($mac)) {
+    if (empty($correo) || empty($contrasena) || empty($ip) || empty($mac)) {
         echo json_encode(['error' => 'campos_incompletos']);
         exit();
     }
@@ -46,26 +45,26 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    if (!preg_match('/^[0-9]{8,15}$/', $cedula)) {
-        echo json_encode(['error' => 'cedula_invalida']);
+    if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['error' => 'correo_invalido']);
         exit();
     }
 
     try {
-        $stmt = $pdo->prepare("SELECT id FROM portal_registros WHERE cedula = ? AND mac = ?");
-        $stmt->execute([$cedula, $mac]);
+        $stmt = $pdo->prepare("SELECT id FROM portal_registros WHERE correo = ? AND mac = ?");
+        $stmt->execute([$correo, $mac]);
         if ($stmt->fetch()) {
             echo json_encode(['error' => 'registro_existente']);
             exit();
         }
 
         $stmt = $pdo->prepare("
-            INSERT INTO portal_registros (nombres, apellidos, cedula, ip, mac, ssid, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO portal_registros (correo, contrasena, ip, mac, ssid, user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$nombres, $apellidos, $cedula, $ip, $mac, $ssid, $_SESSION['user_id']]);
+        $stmt->execute([$correo, $contrasena, $ip, $mac, $ssid, $_SESSION['user_id']]);
 
-        logActividad('Portal Cautivo', 'Nuevo registro: ' . $nombres . ' ' . $apellidos . ' (Cédula: ' . $cedula . ', MAC: ' . $mac . ', IP: ' . $ip . ')');
+        logActividad('Portal Cautivo', 'Nuevo registro: ' . $correo . ' (MAC: ' . $mac . ', IP: ' . $ip . ')');
 
         echo json_encode(['ok' => true, 'id' => $pdo->lastInsertId()]);
     } catch (PDOException $e) {
@@ -74,5 +73,4 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     exit();
 }
-
 echo json_encode(['error' => 'accion_invalida']);
