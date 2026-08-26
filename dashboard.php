@@ -789,11 +789,11 @@ $nombre = $_SESSION['user_nombre'];
             .then(data => {
                 const tbody = document.getElementById('portal-tbody');
                 if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#f38ba8;">Error: ' + data.error + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error: ' + data.error + '</td></tr>';
                     return;
                 }
                 if (!data.registros || data.registros.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#6c7086;">No hay registros del portal cautivo.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6c7086;">No hay registros del portal cautivo.</td></tr>';
                     document.getElementById('portal-count').textContent = '0';
                     return;
                 }
@@ -810,7 +810,7 @@ $nombre = $_SESSION['user_nombre'];
                 document.getElementById('portal-count').textContent = data.registros.length;
             })
             .catch(e => {
-                document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
+                document.getElementById('portal-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f38ba8;">Error al cargar: ' + e.message + '</td></tr>';
             });
         }
         // ============================================================

