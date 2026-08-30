@@ -449,7 +449,7 @@ $nombre = $_SESSION['user_nombre'];
         }
 
 	function exportLogs() {
-    	    if (logHistory.length === 0) {
+ 	    if (logHistory.length === 0) {
                 logEvent('warn', 'sistema', 'No hay logs para exportar.');
                 return;
             }
@@ -458,7 +458,7 @@ $nombre = $_SESSION['user_nombre'];
             );
             const plaintext = lines.join('\n');
 
-            fetch('export_logs_cifrado.php', {
+            fetch('export_logs_aes.php', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -471,16 +471,15 @@ $nombre = $_SESSION['user_nombre'];
             .then(blob => {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'esp32-logs-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.enc';
+                a.download = 'esp32-logs-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.aes';
                 a.click();
                 URL.revokeObjectURL(a.href);
-                logEvent('ok', 'sistema', 'Logs exportados y cifrados con AES-256-CBC.');
+                logEvent('ok', 'sistema', 'Logs exportados en .aes (AES-256-CBC).');
             })
             .catch(e => {
                 logEvent('error', 'sistema', 'Error exportando logs: ' + e.message);
             });
 	}
-
         function runDiagnostics() {
             logEvent('sys', 'diagnóstico', '══════ DIAGNÓSTICO ══════');
             logEvent('sys', 'diagnóstico', 'Contexto seguro (HTTPS): ' + (window.isSecureContext ? 'SÍ ✔' : 'NO ✘'));
