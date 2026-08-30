@@ -448,17 +448,38 @@ $nombre = $_SESSION['user_nombre'];
             logEvent('ok', 'sistema', 'Registro de logs limpiado.');
         }
 
-        function exportLogs() {
+	function exportLogs() {
+    	    if (logHistory.length === 0) {
+                logEvent('warn', 'sistema', 'No hay logs para exportar.');
+                return;
+            }
             const lines = logHistory.map(e =>
-                '[' + e.ts + '] [' + e.level.toUpperCase() + '] [' + e.source + '] ' + e.msg + (e.details ? ' — ' + e.details : ''));
-            const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'esp32-control-logs-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            logEvent('ok', 'sistema', 'Logs exportados: ' + lines.length + ' eventos.');
-        }
+                '[' + e.ts + '] [' + e.level.toUpperCase() + '] [' + e.source + '] ' + e.msg + (e.details ? ' — ' + e.details : '')
+            );
+            const plaintext = lines.join('\n');
+
+            fetch('export_logs_cifrado.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'data=' + encodeURIComponent(plaintext)
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Error del servidor: ' + r.status);
+                return r.blob();
+            })
+            .then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'esp32-logs-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.enc';
+                a.click();
+                URL.revokeObjectURL(a.href);
+                logEvent('ok', 'sistema', 'Logs exportados y cifrados con AES-256-CBC.');
+            })
+            .catch(e => {
+                logEvent('error', 'sistema', 'Error exportando logs: ' + e.message);
+            });
+	}
 
         function runDiagnostics() {
             logEvent('sys', 'diagnóstico', '══════ DIAGNÓSTICO ══════');
